@@ -2,6 +2,7 @@ import Fastify, { type FastifyError } from "fastify";
 import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
+import websocket from "@fastify/websocket";
 import { hasZodFastifySchemaValidationErrors, serializerCompiler, validatorCompiler } from "fastify-type-provider-zod";
 import { sql } from "drizzle-orm";
 import type { Redis } from "ioredis";
@@ -9,13 +10,21 @@ import { createAuth } from "./auth";
 import type { Db } from "./db/client";
 import type { Env } from "./env";
 import { GameError } from "./games/errors";
+import { BaccaratService } from "./games/baccarat/service";
 import { BlackjackService } from "./games/blackjack/service";
 import { FairSeedService } from "./games/fair-seeds";
 import { MinesService } from "./games/mines/service";
 import { PlinkoService } from "./games/plinko/service";
+import { RouletteDealer } from "./games/roulette/dealer";
+import { RouletteService } from "./games/roulette/service";
 import { authBridge } from "./http/auth-bridge";
+import { baccaratRoutes } from "./http/routes/baccarat";
 import { blackjackRoutes } from "./http/routes/blackjack";
 import { instantRoutes } from "./http/routes/instant";
+import { rouletteRoutes } from "./http/routes/roulette";
+import { MemoryBus, RedisBus } from "./realtime/bus";
+import { AlwaysLeader, RedisLeadership } from "./realtime/leader";
+import { RouletteHub } from "./realtime/roulette-hub";
 import { walletRoutes } from "./http/routes/wallet";
 import { WalletError } from "./wallet/errors";
 import { WalletService } from "./wallet/wallet-service";
@@ -61,6 +70,19 @@ export async function buildApp({ env, db, redis }: { env: Env; db: Db; redis: Re
   const seeds = new FairSeedService(db);
   const mines = new MinesService(db, wallet, seeds);
   const plinko = new PlinkoService(db, wallet, seeds);
+  const baccarat = new BaccaratService(db, wallet);
+
+  // Live games: Redis pub/sub + leader lease in production; in-process without Redis (tests).
+  const bus = redis ? new RedisBus(redis, "snk:roulette") : new MemoryBus();
+  const leadership = redis ? new RedisLeadership(redis, "snk:roulette:leader") : new AlwaysLeader();
+  const roulette = new RouletteService(db, wallet, bus);
+  const dealer = new RouletteDealer(db, wallet, roulette, bus, leadership, app.log);
+  const hub = new RouletteHub(bus, roulette);
+  app.addHook("onClose", async () => {
+    await dealer.stop();
+    await hub.close();
+    await bus.close();
+  });
 
   await app.register(helmet, {
     // JSON-only API: nothing should ever render or frame it.
@@ -135,10 +157,13 @@ export async function buildApp({ env, db, redis }: { env: Env; db: Db; redis: Re
     }
   });
 
+  await app.register(websocket, { options: { maxPayload: 2048 } });
   await app.register(authBridge, { auth, apiUrl: env.API_URL });
   await app.register(walletRoutes, { auth, wallet });
   await app.register(blackjackRoutes, { auth, blackjack });
   await app.register(instantRoutes, { auth, mines, plinko });
+  await app.register(baccaratRoutes, { auth, baccarat });
+  await app.register(rouletteRoutes, { auth, roulette, hub, webOrigins: env.WEB_ORIGINS });
 
-  return { app, auth, wallet, blackjack, mines, plinko };
+  return { app, auth, wallet, blackjack, mines, plinko, baccarat, roulette, dealer };
 }

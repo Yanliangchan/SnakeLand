@@ -4,4 +4,6 @@ export * from "./fair";
 export * from "./cards";
 export * from "./blackjack";
 export * from "./instant";
+export * from "./baccarat";
+export * from "./roulette";
 export * from "./api";

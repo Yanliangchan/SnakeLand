@@ -29,6 +29,20 @@
       "when": 1790432368376,
       "tag": "0003_instant_games",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790434453205,
+      "tag": "0004_baccarat",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790434605775,
+      "tag": "0005_roulette",
+      "breakpoints": true
     }
   ]
 }

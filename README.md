@@ -3,8 +3,8 @@
 A casino-style web app with **virtual chips only**. There's no real money anywhere, and every outcome is provably fair.
 It has six games in one lobby: Blackjack, Mines, Plinko, Baccarat, Roulette and Crash.
 
-> Status: **step 3 of 5**. Auth, wallet, lobby, the design system, **Blackjack**, **Mines** and **Plinko** are live.
-> Baccarat, Roulette and Crash come next.
+> Status: **step 4 of 5**. Auth, wallet, lobby, the design system, **Blackjack**, **Mines**, **Plinko**, **Baccarat**
+> and live **Roulette** are live. Crash comes next.
 
 ## Stack
 
@@ -101,6 +101,42 @@ Both games have a **1% house edge**, bets of 10–5,000, and multipliers stored 
   every stake/payout has an idempotency key. Concurrent Plinko drops each lock and consume their own seed.
 - **Keyboard**: Mines: <kbd>Enter</kbd> bet / cash out, <kbd>R</kbd> random tile. Plinko: <kbd>Space</kbd> /
   <kbd>Enter</kbd> drop.
+
+## Baccarat
+
+- **Table**: an 8-deck shoe on the same per-shoe commit–reveal as Blackjack, retired with 16 cards left. Punto banco
+  tableau: naturals on 8/9; the player draws on 0–5; the banker follows the standard third-card table (a test
+  checks every cell).
+- **Payouts**: Player 1:1 · Banker 0.95:1 (5% commission, rounded down) · Tie 8:1 · Player/Banker bets returned on
+  a tie · Player Pair / Banker Pair 11:1. Each bet is at least 10, and the total is at most 5,000 per hand.
+- **Checks**: a 200,000-coup simulation reproduces the textbook 8-deck odds (Banker 45.86%, Player 44.62%,
+  Tie 9.52%). A coup is dealt and settled in one transaction, and a full shoe replays exactly from its revealed
+  seeds.
+
+## Roulette (live)
+
+- **Wheels**: three European single-zero wheels run continuously, staggered 8s apart. Each spin has 15s of
+  betting, a ~7s spin, and 3s showing the result. Everyone watching a wheel sees the same spin. "Next table"
+  moves you to the next wheel (not while your chips are riding) and starts a new table session id, which is
+  recorded on your bets.
+- **Bets**: straights, splits, streets, corners, six-lines, the zero splits/trios and first four, dozens, columns,
+  and the even-money bets. That's a catalogue of every legal bet, and the server only accepts bets from it.
+  Everything pays `stake × 36 / n` (every bet has the same 2.70% edge), with at least 10 per bet and at most
+  5,000 per player per spin.
+- **Architecture**: bets go through REST, the same hardened path as every other game. The WebSocket
+  (`/v1/roulette/ws`) is a read-only feed of wheel state, countdowns, player counts, and your own settlement.
+  One API instance holds a Redis lease (`snk:roulette:leader`) and runs the dealer. The dealer is a stateless
+  tick that reads each wheel's round from Postgres, so if the leader dies another instance takes over mid-round.
+  Events fan out to every instance's sockets through Redis pub/sub.
+- **Integrity**: bets take a shared lock on the round, and closing it needs an exclusive one. A bet racing the
+  buzzer is either in the spin or rejected, never lost (tested with concurrent bets during the close). Payouts
+  are credited in the same transaction that settles the round.
+- **Fairness**: the round's `sha256(serverSeed)` is published when betting opens. The result is
+  `floor(HMAC-SHA256(serverSeed, roundId) × 37)`, sent when bets close so the wheel can animate to it, and the
+  seed is revealed with the result. The Fair panel re-checks both.
+- **WebSocket security**: the Origin must be on the allow-list (preventing cross-site WebSocket hijacking), the
+  session cookie is required, messages are capped at 2 KB and 30 per 10s and validated with Zod, there are at
+  most 5 sockets per user, and a heartbeat drops dead connections.
 
 ## Security
 

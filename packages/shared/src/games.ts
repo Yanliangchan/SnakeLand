@@ -44,7 +44,7 @@ export const GAMES: Record<GameId, GameMeta> = {
     tagline: "Player, banker, or tie.",
     kind: "table",
     usesTables: true,
-    available: false,
+    available: true,
   },
   roulette: {
     id: "roulette",
@@ -52,7 +52,7 @@ export const GAMES: Record<GameId, GameMeta> = {
     tagline: "European single zero.",
     kind: "table",
     usesTables: true,
-    available: false,
+    available: true,
   },
   crash: {
     id: "crash",

@@ -244,6 +244,130 @@ export const blackjackRounds = pgTable(
 );
 
 // ---------------------------------------------------------------------------
+// Baccarat (same table/shoe model as blackjack; a round settles in one request)
+// ---------------------------------------------------------------------------
+
+export const baccaratTables = pgTable(
+  "baccarat_tables",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    createdAt: createdAt(),
+    closedAt: timestamp("closed_at", { withTimezone: true }),
+  },
+  (t) => [uniqueIndex("baccarat_tables_one_open_uq").on(t.userId).where(sql`${t.closedAt} IS NULL`)],
+);
+
+export const baccaratShoes = pgTable(
+  "baccarat_shoes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tableId: uuid("table_id")
+      .notNull()
+      .references(() => baccaratTables.id, { onDelete: "restrict" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    decks: integer("decks").notNull(),
+    serverSeed: text("server_seed").notNull(),
+    serverSeedHash: text("server_seed_hash").notNull(),
+    clientSeed: text("client_seed"),
+    position: integer("position").notNull().default(0),
+    cutPosition: integer("cut_position").notNull(),
+    createdAt: createdAt(),
+    revealedAt: timestamp("revealed_at", { withTimezone: true }),
+  },
+  (t) => [
+    index("baccarat_shoes_table_idx").on(t.tableId),
+    uniqueIndex("baccarat_shoes_one_live_uq").on(t.tableId).where(sql`${t.revealedAt} IS NULL`),
+  ],
+);
+
+export const baccaratRounds = pgTable(
+  "baccarat_rounds",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tableId: uuid("table_id")
+      .notNull()
+      .references(() => baccaratTables.id, { onDelete: "restrict" }),
+    shoeId: uuid("shoe_id")
+      .notNull()
+      .references(() => baccaratShoes.id, { onDelete: "restrict" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    /** BaccaratHand from the engine. */
+    hand: jsonb("hand").notNull(),
+    bets: jsonb("bets").$type<Record<string, number>>().notNull(),
+    shoeStart: integer("shoe_start").notNull(),
+    totalBet: bigint("total_bet", { mode: "number" }).notNull(),
+    totalPayout: bigint("total_payout", { mode: "number" }).notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index("baccarat_rounds_table_idx").on(t.tableId, t.createdAt.desc()),
+    index("baccarat_rounds_user_idx").on(t.userId, t.createdAt.desc()),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// Roulette (live, shared wheels)
+// ---------------------------------------------------------------------------
+
+export const roulettePhaseEnum = pgEnum("roulette_phase", ["betting", "spinning", "settled"]);
+
+export const rouletteRounds = pgTable(
+  "roulette_rounds",
+  {
+    id: uuid("id").primaryKey(),
+    wheelId: text("wheel_id").notNull(),
+    number: integer("number").notNull(),
+    phase: roulettePhaseEnum("phase").notNull().default("betting"),
+    /** Secret until the round is settled. */
+    serverSeed: text("server_seed").notNull(),
+    serverSeedHash: text("server_seed_hash").notNull(),
+    result: integer("result"),
+    opensAt: timestamp("opens_at", { withTimezone: true, precision: 3 }).notNull(),
+    closesAt: timestamp("closes_at", { withTimezone: true, precision: 3 }).notNull(),
+    spinEndsAt: timestamp("spin_ends_at", { withTimezone: true, precision: 3 }),
+    settledAt: timestamp("settled_at", { withTimezone: true, precision: 3 }),
+  },
+  (t) => [
+    uniqueIndex("roulette_rounds_wheel_number_uq").on(t.wheelId, t.number),
+    // One unsettled round per wheel.
+    uniqueIndex("roulette_rounds_one_live_uq").on(t.wheelId).where(sql`${t.phase} <> 'settled'`),
+    check("roulette_rounds_result_range", sql`${t.result} IS NULL OR ${t.result} BETWEEN 0 AND 36`),
+  ],
+);
+
+export const rouletteBets = pgTable(
+  "roulette_bets",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    roundId: uuid("round_id")
+      .notNull()
+      .references(() => rouletteRounds.id, { onDelete: "restrict" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    /** Catalogue id, e.g. "split:17-20". */
+    betId: text("bet_id").notNull(),
+    amount: bigint("amount", { mode: "number" }).notNull(),
+    /** The player's table session (next table issues a new one). */
+    tableId: uuid("table_id").notNull(),
+    payout: bigint("payout", { mode: "number" }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index("roulette_bets_round_idx").on(t.roundId),
+    index("roulette_bets_user_idx").on(t.userId, t.createdAt.desc()),
+    check("roulette_bets_amount_positive", sql`${t.amount} > 0`),
+  ],
+);
+
+// ---------------------------------------------------------------------------
 // Instant games (Mines, Plinko): per-round commit–reveal
 // ---------------------------------------------------------------------------
 
@@ -332,4 +456,9 @@ export const schema = {
   fairSeeds,
   minesRounds,
   plinkoDrops,
+  baccaratTables,
+  baccaratShoes,
+  baccaratRounds,
+  rouletteRounds,
+  rouletteBets,
 };
