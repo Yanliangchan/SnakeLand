@@ -7,6 +7,7 @@ export * from "./instant";
 export * from "./baccarat";
 export * from "./roulette";
 export * from "./crash";
+export * from "./arcade";
 export * from "./live";
 export * from "./progress";
 export * from "./api";

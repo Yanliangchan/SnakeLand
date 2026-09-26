@@ -5,7 +5,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: { default: "snakeland", template: "%s · snakeland" },
-  description: "Six casino classics with virtual chips. Provably fair. No real money.",
+  description: "Nine casino games with virtual chips. Provably fair. No real money.",
   icons: { icon: "/icon.svg", apple: "/apple-touch-icon.png" },
   // Installable: "Add to Home Screen" opens full screen, like an app.
   appleWebApp: { capable: true, title: "snakeland", statusBarStyle: "black-translucent" },

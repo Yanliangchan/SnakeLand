@@ -1,7 +1,7 @@
 # snakeland
 
 A casino-style web app with **virtual chips only**. There's no real money anywhere, and every outcome is provably fair.
-It has six games in one lobby: Blackjack, Mines, Plinko, Baccarat, Roulette and Crash.
+It has nine games in one lobby: Blackjack, Mines, Plinko, Baccarat, Roulette, Crash, Carrier, Tower and Crossing.
 
 > Status: **step 4 of 5**. Auth, wallet, lobby, the design system, **Blackjack**, **Mines**, **Plinko**, **Baccarat**
 > and live **Roulette** are live. Crash comes next.
@@ -157,6 +157,21 @@ Mines has a **3% house edge** and Plinko **1%**. Bets are 10–10,000, and multi
   has an idempotency key.
 - **The snake**: the graph is a snake slithering up the curve on a single canvas; cash-outs show as flags on its
   body, and at the crash it bites (turns red and shakes). It only animates while something is moving.
+
+## Carrier, Tower and Crossing
+
+Instant single-player games with a 97% return, on the same per-round seed commit–reveal as Mines and Plinko
+(the Fair panel re-checks each outcome).
+
+- **Carrier**: pick a speed (Calm/Normal/Fast/Turbo = 4/6/8/10 boosts). Each boost is a cloud (nothing), +0.5×,
+  +1×, +2×, ×2, or a rocket that halves the multiplier, starting from 1×. Then the plane lands on the carrier
+  (pays the multiplier) or splashes down (pays nothing). The landing chance is 0.97 ÷ the expected multiplier
+  for that speed (47% / 39% / 34% / 30%); a test walks every outcome to check the exact return stays at 97%.
+- **Tower**: 8 floors; pick one door per floor (Easy 3 of 4 safe, Medium 2 of 3, Hard 1 of 2, Expert 1 of 3).
+- **Crossing**: hop lane by lane (Easy 4% hit per lane over 24 lanes, Medium 8%/22, Hard 20%/18,
+  Daredevil 40%/12).
+- Tower and Crossing pay `floor(97 ÷ P(surviving every step so far))`, can be cashed out after any step, cash
+  out automatically at the top, and resume after a refresh. The whole layout is fixed by the seeds at the start.
 
 ## Live games only run while someone is playing
 

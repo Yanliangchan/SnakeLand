@@ -60,6 +60,8 @@ export class PurgeService {
       sql`DELETE FROM baccarat_tables WHERE user_id = ${userId}`,
       sql`DELETE FROM mines_rounds WHERE user_id = ${userId}`,
       sql`DELETE FROM plinko_drops WHERE user_id = ${userId}`,
+      sql`DELETE FROM carrier_flights WHERE user_id = ${userId}`,
+      sql`DELETE FROM ladder_rounds WHERE user_id = ${userId}`,
       sql`DELETE FROM fair_seeds WHERE user_id = ${userId}`,
       sql`DELETE FROM transactions WHERE user_id = ${userId}`,
       sql`DELETE FROM wallets WHERE user_id = ${userId}`,
@@ -139,6 +141,11 @@ export class PurgeService {
       SELECT id FROM mines_rounds WHERE status <> 'playing' AND settled_at < ${cutoff} LIMIT ${BATCH})`);
     await b("plinko_drops", () => sql`DELETE FROM plinko_drops WHERE id IN (
       SELECT id FROM plinko_drops WHERE created_at < ${cutoff} LIMIT ${BATCH})`);
+
+    await b("carrier_flights", () => sql`DELETE FROM carrier_flights WHERE id IN (
+      SELECT id FROM carrier_flights WHERE created_at < ${cutoff} LIMIT ${BATCH})`);
+    await b("ladder_rounds", () => sql`DELETE FROM ladder_rounds WHERE id IN (
+      SELECT id FROM ladder_rounds WHERE status <> 'playing' AND settled_at < ${cutoff} LIMIT ${BATCH})`);
 
     await b("sessions", () => sql`DELETE FROM sessions WHERE id IN (
       SELECT id FROM sessions WHERE expires_at < ${now} LIMIT ${BATCH})`);

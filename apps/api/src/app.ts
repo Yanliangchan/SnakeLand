@@ -16,6 +16,8 @@ import { BlackjackService } from "./games/blackjack/service";
 import { FairSeedService } from "./games/fair-seeds";
 import { MinesService } from "./games/mines/service";
 import { PlinkoService } from "./games/plinko/service";
+import { CarrierService } from "./games/arcade/carrier";
+import { LadderService } from "./games/arcade/ladder";
 import { CrashDealer } from "./games/crash/dealer";
 import { CrashService } from "./games/crash/service";
 import { RouletteDealer } from "./games/roulette/dealer";
@@ -24,6 +26,7 @@ import { authBridge } from "./http/auth-bridge";
 import { baccaratRoutes } from "./http/routes/baccarat";
 import { blackjackRoutes } from "./http/routes/blackjack";
 import { instantRoutes } from "./http/routes/instant";
+import { arcadeRoutes } from "./http/routes/arcade";
 import { crashRoutes } from "./http/routes/crash";
 import { liveRoutes } from "./http/routes/live";
 import { rouletteRoutes } from "./http/routes/roulette";
@@ -102,6 +105,8 @@ export async function buildApp({ env, db, redis }: { env: Env; db: Db; redis: Re
   const seeds = new FairSeedService(db);
   const mines = new MinesService(db, wallet, seeds);
   const plinko = new PlinkoService(db, wallet, seeds);
+  const carrier = new CarrierService(db, wallet, seeds);
+  const ladder = new LadderService(db, wallet, seeds);
   const baccarat = new BaccaratService(db, wallet);
 
   // Live games: Redis pub/sub + leader lease in production; in-process without Redis (tests).
@@ -219,6 +224,7 @@ export async function buildApp({ env, db, redis }: { env: Env; db: Db; redis: Re
   await app.register(liveRoutes, { auth, hub, tickets, webOrigins: env.WEB_ORIGINS });
   await app.register(rouletteRoutes, { auth, roulette });
   await app.register(crashRoutes, { auth, crash });
+  await app.register(arcadeRoutes, { auth, carrier, ladder });
   await app.register(progressRoutes, { auth, progress, purge });
   await app.register(adminRoutes, {
     passwordHash: env.ADMIN_PASSWORD_HASH,
@@ -229,5 +235,5 @@ export async function buildApp({ env, db, redis }: { env: Env; db: Db; redis: Re
     purge,
   });
 
-  return { app, auth, wallet, blackjack, mines, plinko, baccarat, roulette, dealer, crash, crashDealer, progress, purge, maintenance, admin, presence };
+  return { app, auth, wallet, blackjack, mines, plinko, baccarat, roulette, dealer, carrier, ladder, crash, crashDealer, progress, purge, maintenance, admin, presence };
 }

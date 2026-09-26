@@ -25,6 +25,15 @@ const GAMES = {
   crash: dynamic(() => import("@/components/games/crash/CrashGame").then((m) => m.CrashGame), {
     loading: () => <GameLoading game="crash" />,
   }),
+  carrier: dynamic(() => import("@/components/games/carrier/CarrierGame").then((m) => m.CarrierGame), {
+    loading: () => <GameLoading game="carrier" />,
+  }),
+  tower: dynamic(() => import("@/components/games/ladder/TowerGame").then((m) => m.TowerGame), {
+    loading: () => <GameLoading game="tower" />,
+  }),
+  crossing: dynamic(() => import("@/components/games/ladder/CrossingGame").then((m) => m.CrossingGame), {
+    loading: () => <GameLoading game="crossing" />,
+  }),
 } satisfies Record<GameId, React.ComponentType>;
 
 export function GameMount({ game }: { game: GameId }) {

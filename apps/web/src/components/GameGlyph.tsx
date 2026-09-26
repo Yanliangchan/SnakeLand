@@ -75,5 +75,27 @@ export function GameGlyph({ game, size = 28 }: { game: GameId; size?: number }) 
           <circle cx="21" cy="7" r="1.8" fill="currentColor" />
         </svg>
       );
+    case "carrier":
+      return (
+        <svg {...common}>
+          <path d="M3 21h16l-2 3H6z" />
+          <path d="M9 13l4-1 7-5c1.2-.8 2.6.6 1.8 1.8l-5 7-1 4-2-3-3-2z" />
+        </svg>
+      );
+    case "tower":
+      return (
+        <svg {...common}>
+          <rect x="6" y="4" width="16" height="20" rx="1.5" />
+          <path d="M6 10.5h16M6 17h16" />
+          <rect x="12" y="19" width="4" height="5" fill="currentColor" stroke="none" />
+        </svg>
+      );
+    case "crossing":
+      return (
+        <svg {...common}>
+          <path d="M4 4v20M24 4v20" />
+          <path d="M11 5v3M11 12v3M11 19v3M17 5v3M17 12v3M17 19v3" strokeOpacity="0.5" />
+        </svg>
+      );
   }
 }

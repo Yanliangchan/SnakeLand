@@ -4,7 +4,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "snakeland",
     short_name: "snakeland",
-    description: "Six casino classics with virtual chips. Provably fair. No real money.",
+    description: "Nine casino games with virtual chips. Provably fair. No real money.",
     start_url: "/",
     scope: "/",
     display: "standalone",

@@ -187,7 +187,7 @@ export function Welcome() {
               transition={{ duration: 0.5, ease: expoOut }}
               className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-[12px] text-fg-muted hairline"
             >
-              <span className="size-1.5 rounded-full bg-win" /> Crash is live · six games
+              <span className="size-1.5 rounded-full bg-win" /> New: Carrier, Tower, Crossing
             </motion.p>
             <motion.h1
               initial={{ opacity: 0, y: 12 }}
@@ -205,7 +205,7 @@ export function Welcome() {
               transition={{ duration: 0.6, ease: expoOut, delay: 0.1 }}
               className="mt-6 max-w-md text-[17px] leading-relaxed text-fg-muted"
             >
-              Blackjack, Baccarat, Roulette, Mines, Plinko and Crash. Virtual chips only, never real money, and every outcome
+              Nine games, from Blackjack and Roulette to Crash and Carrier. Virtual chips only, never real money, and every outcome
               provably fair.
             </motion.p>
             <motion.div
@@ -252,7 +252,7 @@ export function Welcome() {
         <section id="games" className="mx-auto w-full max-w-6xl scroll-mt-20 px-4 py-16 sm:px-6">
           <motion.div {...rise()} className="max-w-xl">
             <p className="text-[12px] font-medium uppercase tracking-[0.08em] text-fg-muted">The floor</p>
-            <h2 className="mt-2 text-[32px] font-semibold leading-tight sm:text-[40px]">Six games. No filler.</h2>
+            <h2 className="mt-2 text-[32px] font-semibold leading-tight sm:text-[40px]">Nine games. No filler.</h2>
           </motion.div>
           <ul className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {GAME_IDS.map((id, i) => (

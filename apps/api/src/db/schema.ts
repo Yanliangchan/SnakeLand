@@ -516,6 +516,67 @@ export const plinkoDrops = pgTable(
 );
 
 // ---------------------------------------------------------------------------
+// Arcade: Carrier (one-shot flights) and the ladder games (Tower, Crossing)
+// ---------------------------------------------------------------------------
+
+export const carrierFlights = pgTable(
+  "carrier_flights",
+  {
+    id: uuid("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    bet: bigint("bet", { mode: "number" }).notNull(),
+    mode: text("mode").notNull(),
+    landed: boolean("landed").notNull(),
+    finalX100: integer("final_x100").notNull(),
+    multiplierX100: integer("multiplier_x100").notNull(),
+    payout: bigint("payout", { mode: "number" }).notNull(),
+    serverSeed: text("server_seed").notNull(),
+    serverSeedHash: text("server_seed_hash").notNull(),
+    clientSeed: text("client_seed").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index("carrier_flights_user_idx").on(t.userId, t.createdAt.desc())],
+);
+
+export const ladderStatusEnum = pgEnum("ladder_status", ["playing", "cashed_out", "bust"]);
+
+export const ladderRounds = pgTable(
+  "ladder_rounds",
+  {
+    id: uuid("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    /** "tower" or "crossing". */
+    game: gameEnum("game").notNull(),
+    mode: text("mode").notNull(),
+    status: ladderStatusEnum("status").notNull().default("playing"),
+    bet: bigint("bet", { mode: "number" }).notNull(),
+    /** Safe steps taken. */
+    level: integer("level").notNull().default(0),
+    /** Tower: door picked per floor. */
+    picks: jsonb("picks").$type<number[]>().notNull().default([]),
+    multiplierX100: integer("multiplier_x100").notNull().default(100),
+    payout: bigint("payout", { mode: "number" }),
+    serverSeed: text("server_seed").notNull(),
+    serverSeedHash: text("server_seed_hash").notNull(),
+    clientSeed: text("client_seed").notNull(),
+    version: integer("version").notNull().default(1),
+    createdAt: createdAt(),
+    settledAt: timestamp("settled_at", { withTimezone: true }),
+  },
+  (t) => [
+    index("ladder_rounds_user_idx").on(t.userId, t.createdAt.desc()),
+    // One round in play per player per game.
+    uniqueIndex("ladder_rounds_one_active_uq").on(t.userId, t.game).where(sql`${t.status} = 'playing'`),
+    // Compared as text: the enum values are added in the same migration.
+    check("ladder_rounds_game", sql`${t.game}::text IN ('tower', 'crossing')`),
+  ],
+);
+
+// ---------------------------------------------------------------------------
 // Admin
 // ---------------------------------------------------------------------------
 
@@ -554,5 +615,7 @@ export const schema = {
   rouletteBets,
   crashRounds,
   crashBets,
+  carrierFlights,
+  ladderRounds,
   adminAudit,
 };

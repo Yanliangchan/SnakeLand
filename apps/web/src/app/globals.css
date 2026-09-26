@@ -72,3 +72,23 @@
 @utility hairline {
   border: 1px solid var(--color-hairline);
 }
+
+/* Carrier: sea swell drifting left. */
+@keyframes waves {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-100px);
+  }
+}
+
+/* Crossing: cars driving down their lane. */
+@keyframes drive {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(120cqh);
+  }
+}

@@ -1,4 +1,4 @@
-export const GAME_IDS = ["blackjack", "mines", "plinko", "baccarat", "roulette", "crash"] as const;
+export const GAME_IDS = ["blackjack", "mines", "plinko", "baccarat", "roulette", "crash", "carrier", "tower", "crossing"] as const;
 export type GameId = (typeof GAME_IDS)[number];
 
 export type GameKind = "table" | "instant" | "live";
@@ -59,6 +59,30 @@ export const GAMES: Record<GameId, GameMeta> = {
     name: "Crash",
     tagline: "Ride the snake. Cash out before it bites.",
     kind: "live",
+    usesTables: false,
+    available: true,
+  },
+  carrier: {
+    id: "carrier",
+    name: "Carrier",
+    tagline: "Grab boosts in flight. Stick the landing.",
+    kind: "instant",
+    usesTables: false,
+    available: true,
+  },
+  tower: {
+    id: "tower",
+    name: "Tower",
+    tagline: "Pick a safe door on every floor.",
+    kind: "instant",
+    usesTables: false,
+    available: true,
+  },
+  crossing: {
+    id: "crossing",
+    name: "Crossing",
+    tagline: "Hop the lanes. Dodge the traffic.",
+    kind: "instant",
     usesTables: false,
     available: true,
   },

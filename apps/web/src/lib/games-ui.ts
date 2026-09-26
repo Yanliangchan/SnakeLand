@@ -8,6 +8,9 @@ export const GAME_ACCENT: Record<GameId, string> = {
   baccarat: "#38bdf8",
   roulette: "#f0524b",
   crash: "#3ddc84",
+  carrier: "#fb923c",
+  tower: "#e879f9",
+  crossing: "#facc15",
 };
 
 export interface GameHelp {
@@ -84,6 +87,40 @@ export const GAME_HELP: Record<GameId, GameHelp> = {
     shortcuts: [
       ["Space / Enter", "Bet · cash out · queue"],
       ["A", "Toggle auto cash-out"],
+    ],
+  },
+  carrier: {
+    steps: [
+      "Set your bet and a flight speed. Faster flights swing harder but land less often.",
+      "Boosts add or multiply your multiplier; rockets cut it in half.",
+      "Land on the carrier to win the multiplier. Miss it and you splash down.",
+    ],
+    shortcuts: [
+      ["Space / Enter", "Take off"],
+      ["1–4", "Pick a speed"],
+    ],
+  },
+  tower: {
+    steps: [
+      "Choose a difficulty: fewer safe doors means bigger multipliers.",
+      "Pick one door on each floor. A safe door lifts you to the next floor.",
+      "Cash out any time, or reach the top for the full multiplier.",
+    ],
+    shortcuts: [
+      ["Enter", "Bet / cash out"],
+      ["1–4", "Pick a door"],
+      ["R", "Random door"],
+    ],
+  },
+  crossing: {
+    steps: [
+      "Choose how busy the road is. More traffic, bigger jumps in the multiplier.",
+      "Hop one lane at a time. Each lane you clear raises the multiplier.",
+      "Cash out whenever you like. Get hit and the stake is gone.",
+    ],
+    shortcuts: [
+      ["Space", "Bet / hop a lane"],
+      ["C", "Cash out"],
     ],
   },
 };
