@@ -462,26 +462,8 @@ export const plinkoDrops = pgTable(
 );
 
 // ---------------------------------------------------------------------------
-// Progress, maintenance and admin
+// Admin
 // ---------------------------------------------------------------------------
-
-/** Consecutive days a player has been in the weekly top 5 (updated by the daily snapshot). */
-export const playerPerks = pgTable("player_perks", {
-  userId: text("user_id")
-    .primaryKey()
-    .references(() => users.id, { onDelete: "cascade" }),
-  top5Streak: integer("top5_streak").notNull().default(0),
-  /** UTC day (YYYY-MM-DD) of the last snapshot that found them in the top 5. */
-  lastTop5Day: text("last_top5_day"),
-  updatedAt: updatedAt(),
-});
-
-/** Small key/value store for scheduled jobs (e.g. the last day the snapshot ran). */
-export const maintenanceState = pgTable("maintenance_state", {
-  key: text("key").primaryKey(),
-  value: text("value").notNull(),
-  updatedAt: updatedAt(),
-});
 
 export const adminAudit = pgTable(
   "admin_audit",
@@ -516,7 +498,5 @@ export const schema = {
   baccaratRounds,
   rouletteRounds,
   rouletteBets,
-  playerPerks,
-  maintenanceState,
   adminAudit,
 };

@@ -3,16 +3,16 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import {
-  ALL_TIME_TITLES,
+  ALL_TIME_PERKS,
   HALL_OF_FAME_SIZE,
-  STREAK_PERKS,
-  WEEKLY_CLAIM_MULTIPLIER_X10,
+  LAST_PLACE_TITLE,
+  WEEKLY_TITLES,
   type LeaderboardDTO,
   type LeaderboardEntryDTO,
   type LeaderboardKind,
 } from "@snakeland/shared";
 import { AppHeader } from "@/components/AppHeader";
-import { PlayerName, TitleBadge } from "@/components/PlayerName";
+import { NAME_COLOUR, PlayerName, TitleBadge } from "@/components/PlayerName";
 import { Segmented } from "@/components/Segmented";
 import { Card } from "@/components/ui";
 import { api } from "@/lib/api";
@@ -54,7 +54,7 @@ function Podium({ entries }: { entries: LeaderboardEntryDTO[] }) {
           {e ? (
             <>
               <RankDot rank={e.rank} className="size-8 text-[13px]" />
-              <p className={cn("mt-2 w-full truncate text-[14px] font-semibold", e.goldName && "text-gold", e.isMe && "underline underline-offset-4")}>
+              <p className={cn("mt-2 w-full truncate text-[14px] font-semibold", e.nameColour && NAME_COLOUR[e.nameColour], e.isMe && "underline underline-offset-4")}>
                 {e.name}
               </p>
               {e.title && <TitleBadge title={e.title} className="mt-1" />}
@@ -70,17 +70,25 @@ function Podium({ entries }: { entries: LeaderboardEntryDTO[] }) {
   );
 }
 
+const COLOUR_LABEL = { gold: "Gold", silver: "Silver", bronze: "Bronze" } as const;
+
 function Rules({ kind }: { kind: LeaderboardKind }) {
-  const items =
+  const items: Array<[string, React.ReactNode]> =
     kind === "weekly"
       ? [
-          ...Object.entries(WEEKLY_CLAIM_MULTIPLIER_X10).map(([rank, x]) => [`#${rank} this week`, `Daily chips ×${x / 10}`]),
-          [`${STREAK_PERKS.claimBonus.days} days in top 5`, `+${STREAK_PERKS.claimBonus.percent}% daily chips`],
-          [`${STREAK_PERKS.goldName.days} days in top 5`, "Gold name"],
-          [`${STREAK_PERKS.fastClaim.days} days in top 5`, `Daily chips every ${STREAK_PERKS.fastClaim.cooldownHours}h`],
+          ...WEEKLY_TITLES.map((t, i): [string, React.ReactNode] => [`#${i + 1} this week`, <TitleBadge key={t} title={t} />]),
+          ["Biggest loss this week", <TitleBadge key="last" title={LAST_PLACE_TITLE} />],
         ]
       : [
-          ...ALL_TIME_TITLES.map((t, i) => [`#${i + 1} all time`, t]),
+          ...ALL_TIME_PERKS.map((p): [string, React.ReactNode] => [
+            `#${p.rank} all time`,
+            <span key={p.rank} className="text-right">
+              <span className={NAME_COLOUR[p.nameColour]}>{COLOUR_LABEL[p.nameColour]} name</span>
+              <span className="block text-[12px] text-fg-muted">
+                +{p.claimBonusPercent}% daily chips{p.cooldownHours ? `, every ${p.cooldownHours}h` : ""}
+              </span>
+            </span>,
+          ]),
           [`Top ${HALL_OF_FAME_SIZE}`, "Hall of Fame"],
         ];
   return (
@@ -88,7 +96,7 @@ function Rules({ kind }: { kind: LeaderboardKind }) {
       {items.map(([k, v]) => (
         <li key={k} className="flex items-center justify-between gap-3 py-2.5 text-[13px]">
           <span className="text-fg-muted">{k}</span>
-          {kind === "alltime" && ALL_TIME_TITLES.includes(v as never) ? <TitleBadge title={v!} /> : <span>{v}</span>}
+          {v}
         </li>
       ))}
     </ul>
@@ -165,7 +173,14 @@ export function LeaderboardView() {
                     )}
                   </>
                 )}
-                {board && me && !meListed && (
+                {board?.lastPlace && (
+                  <div className="mt-4 flex items-center gap-3 border-t border-hairline pt-3 text-[14px]">
+                    <span className="grid h-7 shrink-0 place-items-center rounded-full px-2 text-[11px] text-fg-muted hairline">Last</span>
+                    <PlayerName tag={board.lastPlace} className={cn("flex-1", board.lastPlace.isMe && "underline underline-offset-4")} />
+                    <span className="text-[13px] text-loss tabular">{signedChips(board.lastPlace.profit)}</span>
+                  </div>
+                )}
+                {board && me && !meListed && !board.lastPlace?.isMe && (
                   <div className="mt-4 flex items-center justify-between rounded-[12px] bg-elevated px-3 py-2.5 text-[13px] hairline">
                     <span className="text-fg-muted">
                       {me.user.isGuest
@@ -183,7 +198,7 @@ export function LeaderboardView() {
 
           <Card className="h-fit">
             <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-fg-muted">
-              {kind === "weekly" ? "Weekly perks" : "All-time titles"}
+              {kind === "weekly" ? "Weekly titles" : "All-time rewards"}
             </p>
             {kind === "weekly" && board?.weekEndsAt && (
               <p className="mt-1 text-[13px]" suppressHydrationWarning>

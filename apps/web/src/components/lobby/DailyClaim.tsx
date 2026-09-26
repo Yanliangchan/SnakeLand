@@ -34,7 +34,7 @@ export function DailyClaim() {
   const [terms, setTerms] = useState<ClaimTerms | null>(null);
   const userId = me?.user.id;
 
-  // Perks (weekly rank, top-5 streak) change what the next claim pays.
+  // All-time rank perks change what the next claim pays.
   useEffect(() => {
     if (!userId) return;
     let cancelled = false;

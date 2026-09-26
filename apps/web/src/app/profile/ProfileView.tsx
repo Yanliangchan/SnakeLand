@@ -2,14 +2,14 @@
 
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
-import { GAMES, STREAK_PERKS, isGameId, type ProfileDTO } from "@snakeland/shared";
+import { ALL_TIME_PERKS, GAMES, isGameId, type ProfileDTO } from "@snakeland/shared";
 import { AppHeader } from "@/components/AppHeader";
-import { PlayerName } from "@/components/PlayerName";
+import { NAME_COLOUR, PlayerName, TitleBadge } from "@/components/PlayerName";
 import { Avatar, ButtonLink, Card } from "@/components/ui";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { chips, dateShort, signedChips } from "@/lib/format";
-import { expoOut, fadeUp } from "@/lib/motion";
+import { fadeUp } from "@/lib/motion";
 import { useSession } from "@/providers/session";
 
 function Stat({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone?: "win" | "loss" }) {
@@ -24,47 +24,35 @@ function Stat({ label, value, sub, tone }: { label: string; value: string; sub?:
   );
 }
 
-const MILESTONES = [
-  { days: STREAK_PERKS.claimBonus.days, label: `+${STREAK_PERKS.claimBonus.percent}% daily chips` },
-  { days: STREAK_PERKS.goldName.days, label: "Gold name" },
-  { days: STREAK_PERKS.fastClaim.days, label: `${STREAK_PERKS.fastClaim.cooldownHours}h daily cooldown` },
-];
+const COLOUR_LABEL = { gold: "Gold", silver: "Silver", bronze: "Bronze" } as const;
 
-function Streak({ days }: { days: number }) {
-  const max = MILESTONES.at(-1)!.days;
-  const pct = Math.min(1, days / max) * 100;
+/** The all-time top 3 rewards, with the player's own row highlighted. */
+function Rewards({ allTimeRank, title }: { allTimeRank: number | null; title: string | null }) {
   return (
     <div>
-      <div className="flex items-baseline justify-between">
-        <p className="text-[13px] text-fg-muted">Days in the weekly top 5</p>
-        <p className="text-[20px] font-semibold tabular">{days}</p>
+      <div className="flex items-center justify-between text-[13px]">
+        <span className="text-fg-muted">Weekly title</span>
+        {title ? <TitleBadge title={title} /> : <span className="text-fg-disabled">None this week</span>}
       </div>
-      <div className="relative mt-3 h-1.5 rounded-full bg-elevated">
-        <motion.div
-          initial={{ width: 0 }}
-          animate={{ width: `${pct}%` }}
-          transition={{ duration: 0.6, ease: expoOut }}
-          className="h-full rounded-full bg-gold"
-        />
-        {MILESTONES.map((m) => (
-          <span
-            key={m.days}
-            className={cn("absolute top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-surface", days >= m.days ? "bg-gold" : "bg-elevated")}
-            style={{ left: `${(m.days / max) * 100}%` }}
-          />
-        ))}
-      </div>
-      <ul className="mt-4 space-y-2">
-        {MILESTONES.map((m) => (
-          <li key={m.days} className="flex items-center justify-between text-[13px]">
-            <span className={days >= m.days ? "text-fg" : "text-fg-muted"}>
-              {m.days} days · {m.label}
-            </span>
-            <span className={cn("text-[12px]", days >= m.days ? "text-gold" : "text-fg-disabled")}>
-              {days >= m.days ? "Unlocked" : `${m.days - days} to go`}
-            </span>
-          </li>
-        ))}
+      <p className="mt-4 text-[13px] text-fg-muted">All-time rewards</p>
+      <ul className="mt-2 space-y-1.5">
+        {ALL_TIME_PERKS.map((p) => {
+          const mine = allTimeRank === p.rank;
+          return (
+            <li
+              key={p.rank}
+              className={cn("flex items-center justify-between rounded-[10px] px-3 py-2 text-[13px] hairline", mine ? "bg-elevated" : "bg-bg/50")}
+            >
+              <span>
+                <span className="text-fg-muted">#{p.rank} · </span>
+                <span className={NAME_COLOUR[p.nameColour]}>{COLOUR_LABEL[p.nameColour]} name</span>
+              </span>
+              <span className={cn("text-[12px]", mine ? "text-fg" : "text-fg-muted")}>
+                +{p.claimBonusPercent}%{p.cooldownHours ? ` · every ${p.cooldownHours}h` : ""}
+              </span>
+            </li>
+          );
+        })}
       </ul>
     </div>
   );
@@ -155,7 +143,7 @@ export function ProfileView() {
             </Card>
 
             <Card className="h-fit">
-              <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-fg-muted">Perks</p>
+              <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-fg-muted">Rewards</p>
               <div className="mt-3 rounded-[12px] bg-bg/50 p-4 hairline">
                 <p className="text-[13px] text-fg-muted">Next daily claim</p>
                 <p className="mt-1 text-[22px] font-semibold tabular">+{chips(p.perks.nextClaim.amount)}</p>
@@ -165,7 +153,7 @@ export function ProfileView() {
                 </p>
               </div>
               <div className="mt-4">
-                <Streak days={p.perks.top5Streak} />
+                <Rewards allTimeRank={p.stats.allTimeRank} title={p.user.title} />
               </div>
             </Card>
           </div>

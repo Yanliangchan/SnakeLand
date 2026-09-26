@@ -45,7 +45,7 @@ export class PurgeService {
       sql`DELETE FROM fair_seeds WHERE user_id = ${userId}`,
       sql`DELETE FROM transactions WHERE user_id = ${userId}`,
       sql`DELETE FROM wallets WHERE user_id = ${userId}`,
-      // Sessions, accounts and perks cascade from users.
+      // Sessions and accounts cascade from users.
       sql`DELETE FROM users WHERE id = ${userId}`,
     ];
     for (const statement of statements) await tx.execute(statement);

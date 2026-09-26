@@ -8,8 +8,8 @@ export const CHIP_VALUES = [10, 50, 100, 500, 1_000, 5_000, 10_000] as const;
 export type ChipValue = (typeof CHIP_VALUES)[number];
 
 /**
- * Light to dark as the value rises. The two top chips carry a simple accent
- * design (inner ring + edge marks): red on 5K, gold on 10K.
+ * Light to dark as the value rises. The two top chips drop the edge marks and
+ * wear only a coloured border: red on 5K, gold on 10K.
  */
 const FACE: Record<ChipValue, { bg: string; fg: string; accent?: string }> = {
   10: { bg: "#F4F4F4", fg: "#0A0A0A" },
@@ -18,7 +18,7 @@ const FACE: Record<ChipValue, { bg: string; fg: string; accent?: string }> = {
   500: { bg: "#6E6E6E", fg: "#FAFAFA" },
   1_000: { bg: "#454545", fg: "#FAFAFA" },
   5_000: { bg: "#262626", fg: "#FAFAFA", accent: "#D4403A" },
-  10_000: { bg: "#121212", fg: "#F3D98B", accent: "#D4AF37" },
+  10_000: { bg: "#121212", fg: "#FAFAFA", accent: "#D4AF37" },
 };
 
 export function formatChip(value: number): string {
@@ -62,26 +62,24 @@ export function Chip({ chipId, value, size = 44, selected, onClick, disabled, cl
         background: face.bg,
         color: face.fg,
         fontSize: size * 0.28,
-        boxShadow: selected
-          ? "0 0 0 2px #0A0A0A, 0 0 0 3.5px #FAFAFA"
-          : "inset 0 0 0 1px rgba(255,255,255,0.12), 0 1px 2px rgba(0,0,0,0.5)",
+        boxShadow: [
+          face.accent
+            ? `inset 0 0 0 ${Math.max(2, Math.round(size * 0.07))}px ${face.accent}`
+            : "inset 0 0 0 1px rgba(255,255,255,0.12)",
+          selected ? "0 0 0 2px #0A0A0A, 0 0 0 3.5px #FAFAFA" : "0 1px 2px rgba(0,0,0,0.5)",
+        ].join(", "),
       }}
     >
-      {/* Edge notches */}
-      <span
-        aria-hidden
-        className="pointer-events-none absolute inset-[3px] rounded-full"
-        style={{
-          background: `repeating-conic-gradient(from 0deg, ${face.accent ?? `${face.fg}33`} 0deg 10deg, transparent 10deg 45deg)`,
-          mask: "radial-gradient(circle, transparent 62%, #000 63%)",
-          WebkitMask: "radial-gradient(circle, transparent 62%, #000 63%)",
-        }}
-      />
-      {face.accent && (
+      {/* Edge notches (plain chips only) */}
+      {!face.accent && (
         <span
           aria-hidden
-          className="pointer-events-none absolute inset-[22%] rounded-full"
-          style={{ boxShadow: `inset 0 0 0 1.5px ${face.accent}` }}
+          className="pointer-events-none absolute inset-[3px] rounded-full"
+          style={{
+            background: `repeating-conic-gradient(from 0deg, ${face.fg}33 0deg 10deg, transparent 10deg 45deg)`,
+            mask: "radial-gradient(circle, transparent 62%, #000 63%)",
+            WebkitMask: "radial-gradient(circle, transparent 62%, #000 63%)",
+          }}
         />
       )}
       <span className="relative">{formatChip(value)}</span>

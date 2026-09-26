@@ -64,6 +64,13 @@
       "when": 1790441687074,
       "tag": "0008_backfill_and_purge",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1790445653680,
+      "tag": "0009_drop_streak_perks",
+      "breakpoints": true
     }
   ]
 }

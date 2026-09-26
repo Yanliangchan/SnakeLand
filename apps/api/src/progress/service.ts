@@ -1,10 +1,10 @@
-import { and, desc, eq, gt, inArray, isNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, isNull, lt, or, sql } from "drizzle-orm";
 import {
+  ALL_TIME_PERKS,
   HALL_OF_FAME_SIZE,
-  STREAK_PERKS,
+  LAST_PLACE_TITLE,
   claimTerms,
-  titleForAllTimeRank,
-  utcDay,
+  titleForWeeklyRank,
   weekKey,
   weekStart,
   type LeaderboardDTO,
@@ -13,14 +13,13 @@ import {
   type ProfileDTO,
 } from "@snakeland/shared";
 import type { Db } from "../db/client";
-import { maintenanceState, playerPerks, users } from "../db/schema";
+import { users } from "../db/schema";
 import { WalletError } from "../wallet/errors";
 import type { WalletService } from "../wallet/wallet-service";
 import { walletStatsTable } from "./tables";
 
 const BOARD_SIZE = 50;
 const CACHE_MS = 30_000;
-const SNAPSHOT_KEY = "top5_snapshot_day";
 
 type Row = { userId: string; name: string; profit: number; joined: Date };
 
@@ -113,20 +112,30 @@ export class ProgressService {
     return { rank: (ahead?.n ?? 0) + 1, profit: mine };
   }
 
-  private async streaks(userIds: string[]): Promise<Map<string, number>> {
-    if (userIds.length === 0) return new Map();
-    const rows = await this.db
-      .select({ userId: playerPerks.userId, streak: playerPerks.top5Streak })
-      .from(playerPerks)
-      .where(inArray(playerPerks.userId, userIds));
-    return new Map(rows.map((r) => [r.userId, r.streak]));
+  /** The registered player with the biggest loss this week, if anyone is down. */
+  private lastPlace() {
+    return this.cache.get(`last:${weekKey(this.clock())}`, async () => {
+      const w = walletStatsTable;
+      const rows = await this.db
+        .select({ userId: users.id, name: users.name, profit: w.weekProfit, joined: users.createdAt })
+        .from(w)
+        .innerJoin(users, eq(users.id, w.userId))
+        .where(and(this.eligible(), eq(w.weekKey, weekKey(this.clock())), lt(w.weekProfit, 0)))
+        .orderBy(asc(w.weekProfit), users.createdAt)
+        .limit(1);
+      return rows.map((r) => ({ ...r, profit: Number(r.profit) }));
+    });
   }
 
-  /** Name decorations: all-time titles and Hall of Fame, plus the gold name from a 7-day top-5 streak. */
+  /**
+   * Name decorations: a title from this week's board (top 3, plus "Safety
+   * Stores" for last place) and a name colour from the all-time top 3.
+   */
   async tags(players: Array<{ userId: string; name: string }>): Promise<Map<string, PlayerTag>> {
-    const allTime = await this.board("alltime");
+    const [allTime, weekly, last] = await Promise.all([this.board("alltime"), this.board("weekly"), this.lastPlace()]);
     const allTimeRank = new Map(allTime.map((r, i) => [r.userId, i + 1]));
-    const streaks = await this.streaks(players.map((p) => p.userId));
+    const weeklyRank = new Map(weekly.map((r, i) => [r.userId, i + 1]));
+    const lastId = last[0]?.userId;
     return new Map(
       players.map((p) => {
         const rank = allTimeRank.get(p.userId) ?? null;
@@ -134,9 +143,9 @@ export class ProgressService {
           p.userId,
           {
             name: p.name,
-            title: titleForAllTimeRank(rank),
+            title: p.userId === lastId ? LAST_PLACE_TITLE : titleForWeeklyRank(weeklyRank.get(p.userId) ?? null),
+            nameColour: ALL_TIME_PERKS.find((k) => k.rank === rank)?.nameColour ?? null,
             hallOfFame: rank !== null && rank <= HALL_OF_FAME_SIZE,
-            goldName: (streaks.get(p.userId) ?? 0) >= STREAK_PERKS.goldName.days,
           },
         ];
       }),
@@ -145,26 +154,23 @@ export class ProgressService {
 
   async leaderboard(kind: LeaderboardKind, viewerId: string | null): Promise<LeaderboardDTO> {
     const rows = await this.board(kind);
-    const tags = await this.tags(rows);
+    const last = kind === "weekly" ? (await this.lastPlace())[0] : undefined;
+    const tags = await this.tags(last ? [...rows, last] : rows);
     const key = weekKey(this.clock());
     return {
       kind,
       weekStartsAt: kind === "weekly" ? weekStart(key).toISOString() : null,
       weekEndsAt: kind === "weekly" ? weekStart(key + 1).toISOString() : null,
       entries: rows.map((r, i) => ({ ...tags.get(r.userId)!, rank: i + 1, profit: r.profit, isMe: r.userId === viewerId })),
+      lastPlace: last ? { ...tags.get(last.userId)!, profit: last.profit, isMe: last.userId === viewerId } : null,
       me: viewerId ? await this.rank(kind, viewerId) : null,
     };
   }
 
-  private async streakOf(userId: string) {
-    return (await this.streaks([userId])).get(userId) ?? 0;
-  }
-
   /** What this player's next daily claim pays (perks apply to registered players only). */
   async claimTermsFor(userId: string, isGuest: boolean) {
-    if (isGuest) return claimTerms(null, 0);
-    const [streak, weekly] = await Promise.all([this.streakOf(userId), this.rank("weekly", userId)]);
-    return claimTerms(weekly.rank, streak);
+    if (isGuest) return claimTerms(null);
+    return claimTerms((await this.rank("alltime", userId)).rank);
   }
 
   async claimDaily(userId: string, isGuest: boolean) {
@@ -192,10 +198,9 @@ export class ProgressService {
     if (!row) throw new WalletError("WALLET_NOT_FOUND", "Player not found");
     if (row.balance === null) await this.wallet.getWallet(userId);
 
-    const [weekly, allTime, streak, tags, games] = await Promise.all([
+    const [weekly, allTime, tags, games] = await Promise.all([
       this.rank("weekly", userId),
       this.rank("alltime", userId),
-      this.streakOf(userId),
       this.tags([{ userId, name: row.name }]),
       this.db.execute<{ game: string; rounds: number }>(sql`
         SELECT game::text AS game, count(DISTINCT round_id)::int AS rounds FROM transactions
@@ -225,70 +230,9 @@ export class ProgressService {
         favouriteGame: gameRows[0]?.game ?? null,
       },
       perks: {
-        top5Streak: streak,
-        nextClaim: claimTerms(row.isAnonymous ? null : weekly.rank, row.isAnonymous ? 0 : streak),
+        nextClaim: claimTerms(row.isAnonymous ? null : allTime.rank),
         nextDailyClaimAt: next,
       },
     };
-  }
-
-  /**
-   * Once per UTC day: record who finished yesterday in the weekly top 5 and
-   * extend (or reset) their streaks. Safe to call repeatedly and from several
-   * instances; only the first call of the day does the work.
-   */
-  async snapshotTop5(now = this.clock()): Promise<boolean> {
-    const today = utcDay(now);
-    const yesterdayDate = new Date(now.getTime() - 86_400_000);
-    const yesterday = utcDay(yesterdayDate);
-    const dayBefore = utcDay(new Date(now.getTime() - 2 * 86_400_000));
-    const wk = weekKey(new Date(`${yesterday}T12:00:00Z`));
-
-    return this.db.transaction(async (tx) => {
-      const claimed = await tx
-        .insert(maintenanceState)
-        .values({ key: SNAPSHOT_KEY, value: today })
-        .onConflictDoUpdate({
-          target: maintenanceState.key,
-          set: { value: today },
-          where: sql`${maintenanceState.value} <> ${today}`,
-        })
-        .returning();
-      if (claimed.length === 0) return false; // already done today
-
-      const w = walletStatsTable;
-      // Yesterday's standings, even if a player has since rolled into a new week.
-      const profit = sql<number>`CASE WHEN ${w.weekKey} = ${wk} THEN ${w.weekProfit} WHEN ${w.prevWeekKey} = ${wk} THEN ${w.prevWeekProfit} ELSE 0 END`;
-      const top5 = await tx
-        .select({ userId: users.id })
-        .from(w)
-        .innerJoin(users, eq(users.id, w.userId))
-        .where(and(this.eligible(), gt(profit, 0)))
-        .orderBy(desc(profit), users.createdAt)
-        .limit(5);
-      const ids = top5.map((t) => t.userId);
-
-      for (const userId of ids) {
-        await tx
-          .insert(playerPerks)
-          .values({ userId, top5Streak: 1, lastTop5Day: yesterday })
-          .onConflictDoUpdate({
-            target: playerPerks.userId,
-            set: {
-              top5Streak: sql`CASE WHEN ${playerPerks.lastTop5Day} = ${dayBefore} THEN ${playerPerks.top5Streak} + 1
-                                   WHEN ${playerPerks.lastTop5Day} = ${yesterday} THEN ${playerPerks.top5Streak}
-                                   ELSE 1 END`,
-              lastTop5Day: yesterday,
-            },
-          });
-      }
-      // Anyone not in yesterday's top 5 loses their streak.
-      await tx
-        .update(playerPerks)
-        .set({ top5Streak: 0 })
-        .where(and(gt(playerPerks.top5Streak, 0), or(isNull(playerPerks.lastTop5Day), lt(playerPerks.lastTop5Day, yesterday))));
-      this.cache.clear();
-      return true;
-    });
   }
 }

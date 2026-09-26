@@ -110,7 +110,6 @@ export async function buildApp({ env, db, redis }: { env: Env; db: Db; redis: Re
 
   const progress = new ProgressService(db, wallet);
   const maintenance = new MaintenanceRunner(
-    progress,
     purge,
     redis ? new RedisLeadership(redis, "snk:maint:leader", 60_000) : new AlwaysLeader(),
     app.log,

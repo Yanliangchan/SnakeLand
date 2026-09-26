@@ -25,66 +25,74 @@ afterAll(async () => {
   await pool.end();
 });
 
-describe("Leaderboards and perks", () => {
+describe("Leaderboards, titles and perks", () => {
   // A random future week that only this run's players have played in.
   const week = weekKey(new Date()) + 5_000 + Math.floor(Math.random() * 5_000);
-  const day = (n: number) => new Date(weekStart(week).getTime() + n * DAY + 12 * 3_600_000);
-  let now = day(0);
+  const now = new Date(weekStart(week).getTime() + 2 * DAY + 12 * 3_600_000);
   const clock = () => now;
   const wallet = new WalletService(db, clock);
   const progress = new ProgressService(db, wallet, clock);
   const big = Math.floor(Date.now() / 100);
-  let a: string, b: string, c: string, guest: string;
+  let a: string, b: string, c: string, loser: string, guest: string;
 
   beforeAll(async () => {
-    [a, b, c, guest] = await Promise.all([createUser(db), createUser(db), createUser(db), createUser(db, { anonymous: true })]);
-    created.push(a, b, c, guest);
-    const win = (userId: string, amount: number) => wallet.apply({ userId, amount, type: "payout", game: "plinko", tableId: crypto.randomUUID(), roundId: crypto.randomUUID() });
-    await win(a, big * 3);
-    await win(b, big * 2);
-    await win(c, big);
-    await win(guest, big * 4);
+    [a, b, c, loser, guest] = await Promise.all([
+      createUser(db),
+      createUser(db),
+      createUser(db),
+      createUser(db),
+      createUser(db, { anonymous: true }),
+    ]);
+    created.push(a, b, c, loser, guest);
+    const play = (userId: string, amount: number) =>
+      wallet.apply({
+        userId,
+        amount,
+        type: amount > 0 ? "payout" : "bet",
+        game: "plinko",
+        tableId: crypto.randomUUID(),
+        roundId: crypto.randomUUID(),
+      });
+    await play(a, big * 3);
+    await play(b, big * 2);
+    await play(c, big);
+    await play(loser, -900);
+    await play(guest, big * 4);
     await db.update(users).set({ name: "Alpha" }).where(eq(users.id, a));
   });
 
-  it("ranks registered players and gives the all-time top 3 their titles", async () => {
+  it("colours the all-time top 3 gold, silver and bronze", async () => {
     const board = await progress.leaderboard("alltime", a);
-    expect(board.entries.slice(0, 3).map((e) => e.title)).toEqual(["Snake King", "Viper", "Cobra"]);
+    expect(board.entries.slice(0, 3).map((e) => e.nameColour)).toEqual(["gold", "silver", "bronze"]);
     expect(board.entries[0]).toMatchObject({ name: "Alpha", isMe: true, hallOfFame: true, profit: big * 3 });
     expect(board.me).toEqual({ rank: 1, profit: big * 3 });
+    expect(board.lastPlace).toBeNull();
     expect(board.entries.some((e) => e.profit === big * 4)).toBe(false); // guests never rank
-
-    const weekly = await progress.leaderboard("weekly", b);
-    expect(weekly.entries.map((e) => e.profit)).toEqual([big * 3, big * 2, big]);
-    expect(weekly.me?.rank).toBe(2);
-    expect(weekly.weekStartsAt).toBe(weekStart(week).toISOString());
   });
 
-  it("multiplies the daily claim for the weekly top 3 only", async () => {
-    expect((await progress.claimDaily(a, false)).amount).toBe(DAILY_CLAIM_AMOUNT * 3);
-    expect((await progress.claimDaily(b, false)).amount).toBe(DAILY_CLAIM_AMOUNT * 2);
+  it("titles the weekly top 3 and the week's biggest loser", async () => {
+    const weekly = await progress.leaderboard("weekly", loser);
+    expect(weekly.entries.map((e) => e.profit)).toEqual([big * 3, big * 2, big]);
+    expect(weekly.entries.map((e) => e.title)).toEqual(["Snake King", "Black Mamba", "Viper"]);
+    expect(weekly.lastPlace).toMatchObject({ title: "Safety Stores", profit: -900, isMe: true });
+    expect(weekly.weekStartsAt).toBe(weekStart(week).toISOString());
+    expect((await progress.profile(loser)).user.title).toBe("Safety Stores");
+  });
+
+  it("gives the all-time top 3 bigger daily claims, and #1 a 12h cooldown", async () => {
+    const first = await progress.claimDaily(a, false);
+    expect(first.amount).toBe(DAILY_CLAIM_AMOUNT * 1.2);
+    expect(first.reasons).toEqual(["All-time #1: +20%, every 12h"]);
+    expect(first.nextDailyClaimAt).toBe(new Date(now.getTime() + 12 * 3_600_000).toISOString());
+    expect((await progress.claimDaily(b, false)).amount).toBe(DAILY_CLAIM_AMOUNT * 1.1);
     const third = await progress.claimDaily(c, false);
-    expect(third.amount).toBe(DAILY_CLAIM_AMOUNT * 1.5);
-    expect(third.reasons).toEqual(["Weekly #3 ×1.5"]);
+    expect(third.amount).toBe(DAILY_CLAIM_AMOUNT * 1.05);
     expect(third.nextDailyClaimAt).toBe(new Date(now.getTime() + DAY).toISOString());
     expect((await progress.claimDaily(guest, true)).amount).toBe(DAILY_CLAIM_AMOUNT);
     await expect(progress.claimDaily(a, false)).rejects.toMatchObject({ code: "DAILY_CLAIM_NOT_READY" });
-  });
 
-  it("builds top-5 streaks once a day and turns them into perks", async () => {
-    expect(await progress.snapshotTop5(day(1))).toBe(true);
-    expect(await progress.snapshotTop5(day(1))).toBe(false); // once per day
-    for (let d = 2; d <= 6; d++) await progress.snapshotTop5(day(d));
-
-    now = day(6);
-    const claim = await progress.claimDaily(a, false);
-    expect(claim.amount).toBe(Math.floor(DAILY_CLAIM_AMOUNT * 3 * 1.1));
-    expect(claim.reasons).toHaveLength(2);
-
-    await progress.snapshotTop5(day(7));
     const profile = await progress.profile(a);
-    expect(profile.user).toMatchObject({ title: "Snake King", goldName: true, isGuest: false });
-    expect(profile.perks.top5Streak).toBe(7);
+    expect(profile.user).toMatchObject({ title: "Snake King", nameColour: "gold", isGuest: false });
     expect(profile.stats.allTimeRank).toBe(1);
     expect(profile.stats.biggestWin).toBe(big * 3);
   });

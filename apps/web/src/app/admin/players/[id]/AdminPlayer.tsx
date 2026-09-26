@@ -284,7 +284,7 @@ export function AdminPlayer({ id }: { id: string }) {
             <Row k="Biggest win" v={chips(p.stats.biggestWin)} />
             <Row k="Rounds" v={chips(p.stats.roundsPlayed)} />
             <Row k="Favourite" v={p.stats.favouriteGame && isGameId(p.stats.favouriteGame) ? GAMES[p.stats.favouriteGame].name : "—"} />
-            <Row k="Top-5 streak" v={`${p.perks.top5Streak} days`} />
+            <Row k="Weekly title" v={p.user.title ?? "—"} />
             <Row k="Next claim pays" v={chips(p.perks.nextClaim.amount)} />
           </div>
         </Section>

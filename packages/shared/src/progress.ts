@@ -19,56 +19,59 @@ export function weekStart(key: number): Date {
   return new Date(EPOCH_MONDAY_MS + key * WEEK_MS);
 }
 
-/** UTC calendar day, e.g. "2026-09-26". */
-export const utcDay = (date: Date = new Date()) => date.toISOString().slice(0, 10);
+// ---------------------------------------------------------------- weekly → titles
 
-// ---------------------------------------------------------------- all-time → titles
+/** This week's top 3 carry a title; the week's biggest loser gets the last one. */
+export const WEEKLY_TITLES = ["Snake King", "Black Mamba", "Viper"] as const;
+export const LAST_PLACE_TITLE = "Safety Stores";
+export type WeeklyTitle = (typeof WEEKLY_TITLES)[number] | typeof LAST_PLACE_TITLE;
 
-export const ALL_TIME_TITLES = ["Snake King", "Viper", "Cobra"] as const;
-export type AllTimeTitle = (typeof ALL_TIME_TITLES)[number];
-export const HALL_OF_FAME_SIZE = 10;
-
-export function titleForAllTimeRank(rank: number | null): AllTimeTitle | null {
-  return rank !== null && rank >= 1 && rank <= 3 ? ALL_TIME_TITLES[rank - 1]! : null;
+export function titleForWeeklyRank(rank: number | null): WeeklyTitle | null {
+  return rank !== null && rank >= 1 && rank <= WEEKLY_TITLES.length ? WEEKLY_TITLES[rank - 1]! : null;
 }
 
-// ---------------------------------------------------------------- weekly → perks
+// ---------------------------------------------------------------- all-time → name colours + perks
 
-/** Daily-claim multiplier for this week's top 3 (in tenths: 30 = ×3). */
-export const WEEKLY_CLAIM_MULTIPLIER_X10: Record<number, number> = { 1: 30, 2: 20, 3: 15 };
+export type NameColour = "gold" | "silver" | "bronze";
 
-/** Rewards for consecutive days spent in the weekly top 5. */
-export const STREAK_PERKS = {
-  claimBonus: { days: 3, percent: 10 },
-  goldName: { days: 7 },
-  fastClaim: { days: 14, cooldownHours: 12 },
-} as const;
+export interface AllTimePerk {
+  rank: number;
+  nameColour: NameColour;
+  /** Extra daily chips, in percent. */
+  claimBonusPercent: number;
+  /** Daily claim cooldown, when shorter than the standard 24h. */
+  cooldownHours?: number;
+}
 
+export const ALL_TIME_PERKS: readonly AllTimePerk[] = [
+  { rank: 1, nameColour: "gold", claimBonusPercent: 20, cooldownHours: 12 },
+  { rank: 2, nameColour: "silver", claimBonusPercent: 10 },
+  { rank: 3, nameColour: "bronze", claimBonusPercent: 5 },
+];
+export const HALL_OF_FAME_SIZE = 10;
 export const DAILY_COOLDOWN_HOURS = 24;
+
+export const allTimePerk = (rank: number | null) =>
+  rank === null ? null : (ALL_TIME_PERKS.find((p) => p.rank === rank) ?? null);
 
 export interface ClaimTerms {
   amount: Chips;
   cooldownHours: number;
-  /** Human-readable reasons, e.g. ["Weekly #1 ×3", "3-day top-5 streak +10%"]. */
+  /** Human-readable reasons, e.g. ["All-time #1: +20%, every 12h"]. */
   reasons: string[];
 }
 
-/** What a player's next daily claim pays, given their weekly rank and top-5 streak. */
-export function claimTerms(weeklyRank: number | null, top5Streak: number): ClaimTerms {
-  const reasons: string[] = [];
-  let x10 = 10;
-  if (weeklyRank !== null && WEEKLY_CLAIM_MULTIPLIER_X10[weeklyRank]) {
-    x10 = WEEKLY_CLAIM_MULTIPLIER_X10[weeklyRank]!;
-    reasons.push(`Weekly #${weeklyRank} ×${x10 / 10}`);
-  }
-  let amount = Math.floor((DAILY_CLAIM_AMOUNT * x10) / 10);
-  if (top5Streak >= STREAK_PERKS.claimBonus.days) {
-    amount = Math.floor((amount * (100 + STREAK_PERKS.claimBonus.percent)) / 100);
-    reasons.push(`${top5Streak}-day top-5 streak +${STREAK_PERKS.claimBonus.percent}%`);
-  }
-  const fast = top5Streak >= STREAK_PERKS.fastClaim.days;
-  if (fast) reasons.push(`${STREAK_PERKS.fastClaim.days}-day streak: ${STREAK_PERKS.fastClaim.cooldownHours}h cooldown`);
-  return { amount, cooldownHours: fast ? STREAK_PERKS.fastClaim.cooldownHours : DAILY_COOLDOWN_HOURS, reasons };
+/** What a player's next daily claim pays, given their all-time rank. */
+export function claimTerms(allTimeRank: number | null): ClaimTerms {
+  const perk = allTimePerk(allTimeRank);
+  if (!perk) return { amount: DAILY_CLAIM_AMOUNT, cooldownHours: DAILY_COOLDOWN_HOURS, reasons: [] };
+  const cooldownHours = perk.cooldownHours ?? DAILY_COOLDOWN_HOURS;
+  const every = perk.cooldownHours ? `, every ${perk.cooldownHours}h` : "";
+  return {
+    amount: Math.floor((DAILY_CLAIM_AMOUNT * (100 + perk.claimBonusPercent)) / 100),
+    cooldownHours,
+    reasons: [`All-time #${perk.rank}: +${perk.claimBonusPercent}%${every}`],
+  };
 }
 
 // ---------------------------------------------------------------- DTOs
@@ -77,9 +80,11 @@ export type LeaderboardKind = "weekly" | "alltime";
 
 export interface PlayerTag {
   name: string;
-  title: AllTimeTitle | null;
+  /** From this week's board. */
+  title: WeeklyTitle | null;
+  /** From the all-time board. */
+  nameColour: NameColour | null;
   hallOfFame: boolean;
-  goldName: boolean;
 }
 
 export interface LeaderboardEntryDTO extends PlayerTag {
@@ -94,6 +99,8 @@ export interface LeaderboardDTO {
   weekStartsAt: string | null;
   weekEndsAt: string | null;
   entries: LeaderboardEntryDTO[];
+  /** Weekly only: the registered player with the biggest loss this week ("Safety Stores"). */
+  lastPlace: (PlayerTag & { profit: Chips; isMe: boolean }) | null;
   me: { rank: number | null; profit: Chips } | null;
 }
 
@@ -111,7 +118,6 @@ export interface ProfileDTO {
     favouriteGame: string | null;
   };
   perks: {
-    top5Streak: number;
     nextClaim: ClaimTerms;
     nextDailyClaimAt: string | null;
   };

@@ -60,8 +60,8 @@ export function Lobby() {
 
         <div className="mt-3 grid grid-cols-2 gap-3">
           {[
-            { href: "/leaderboard", title: "Leaderboards", sub: "Weekly perks · all-time titles" },
-            { href: "/profile", title: "Profile", sub: "Stats, streaks and perks" },
+            { href: "/leaderboard", title: "Leaderboards", sub: "Weekly titles · all-time rewards" },
+            { href: "/profile", title: "Profile", sub: "Stats, titles and rewards" },
           ].map((l) => (
             <motion.div key={l.href} {...fadeUp} whileTap={tap} transition={tapTransition}>
               <Link

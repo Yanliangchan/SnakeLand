@@ -147,12 +147,12 @@ Profit counts only play (bets, payouts, refunds); claims, bonuses and admin adju
 on `wallets` (lifetime profit, this week's profit, wagered, biggest win) are updated inside the same wallet
 transaction, so rankings never scan the ledger. Only registered, non-suspended players rank.
 
-- **Weekly board** (weeks start Monday 00:00 UTC): #1/#2/#3 get daily chips ×3/×2/×1.5.
-- **Top-5 streak**: once a day the previous day's weekly top 5 is snapshotted. 3 days in a row → +10% daily
-  chips, 7 days → gold name, 14 days → daily chips every 12h.
-- **All-time board**: #1 Snake King, #2 Viper, #3 Cobra; the top 10 are Hall of Fame.
+- **Weekly board** (weeks start Monday 00:00 UTC) gives titles: #1 Snake King, #2 Black Mamba, #3 Viper. The
+  registered player with the biggest loss of the week is titled Safety Stores.
+- **All-time board** gives name colours and daily-claim perks: #1 gold name, +20% daily chips and a 12h cooldown;
+  #2 silver name, +10%; #3 bronze name, +5%. The top 10 are Hall of Fame.
 - `/profile` shows balance, weekly/all-time profit and rank, wagered, biggest win, rounds, favourite game,
-  the next claim's amount and streak progress.
+  the current weekly title and the next claim's amount.
 
 ## Data retention
 
