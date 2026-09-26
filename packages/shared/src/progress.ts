@@ -88,6 +88,7 @@ export interface PlayerTag {
 }
 
 export interface LeaderboardEntryDTO extends PlayerTag {
+  userId: string;
   rank: number;
   profit: Chips;
   isMe: boolean;
@@ -100,7 +101,7 @@ export interface LeaderboardDTO {
   weekEndsAt: string | null;
   entries: LeaderboardEntryDTO[];
   /** Weekly only: the registered player with the biggest loss this week ("Safety Stores"). */
-  lastPlace: (PlayerTag & { profit: Chips; isMe: boolean }) | null;
+  lastPlace: (PlayerTag & { userId: string; profit: Chips; isMe: boolean }) | null;
   me: { rank: number | null; profit: Chips } | null;
 }
 
@@ -121,4 +122,10 @@ export interface ProfileDTO {
     nextClaim: ClaimTerms;
     nextDailyClaimAt: string | null;
   };
+}
+
+/** What anyone can see about a registered player (no balance, email or claim state). */
+export interface PublicProfileDTO {
+  user: PlayerTag & { id: string; joinedAt: string };
+  stats: ProfileDTO["stats"];
 }

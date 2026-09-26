@@ -155,4 +155,3 @@ export type RouletteServerMessage =
   | { type: "pong"; serverNow: string }
   | { type: "error"; message: string };
 
-export type RouletteClientMessage = { type: "join"; wheelId: WheelId } | { type: "ping" };

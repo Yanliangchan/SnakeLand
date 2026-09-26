@@ -2,11 +2,18 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import Link from "next/link";
+import { useEffect, useState } from "react";
+import type { GameId } from "@snakeland/shared";
 import { Avatar, BalanceCounter } from "@/components/ui";
+import { GAME_ACCENT } from "@/lib/games-ui";
 import { tap, tableSwitch, tapTransition } from "@/lib/motion";
 import { useSession } from "@/providers/session";
+import { GameHelpSheet, GameTour } from "./games/shared/GameHelp";
+import { SessionStatsBar } from "./games/shared/SessionStatsBar";
 
 export interface GameShellProps {
+  /** Which game: drives the accent colour, help, tour and session stats. */
+  game: GameId;
   /** e.g. "Blackjack". */
   title: string;
   /** Short table label shown next to the title, e.g. "Table 3F2A". */
@@ -29,8 +36,22 @@ export interface GameShellProps {
  * control panel sits on the left from `lg` up and at the bottom below that.
  * The stage is a size container, so games scale with `cqw`/`cqh` units.
  */
-export function GameShell({ title, tableLabel, tableId, onNextTable, controls, children }: GameShellProps) {
+export function GameShell({ game, title, tableLabel, tableId, onNextTable, controls, children }: GameShellProps) {
   const { me } = useSession();
+  const [helpOpen, setHelpOpen] = useState(false);
+  const accent = GAME_ACCENT[game];
+
+  // "?" opens the help sheet from anywhere in the game.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "?" || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.target instanceof HTMLElement && e.target.closest("input, textarea")) return;
+      e.preventDefault();
+      setHelpOpen((o) => !o);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   return (
     <div className="flex h-dvh flex-col">
@@ -61,6 +82,16 @@ export function GameShell({ title, tableLabel, tableId, onNextTable, controls, c
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3">
+            <motion.button
+              whileTap={tap}
+              transition={tapTransition}
+              onClick={() => setHelpOpen(true)}
+              aria-label="How to play and shortcuts"
+              title="How to play (?)"
+              className="grid size-9 place-items-center rounded-[var(--radius-ui)] text-[14px] font-semibold text-fg-muted transition-colors hairline hover:text-fg"
+            >
+              ?
+            </motion.button>
             {onNextTable && (
               <motion.button
                 whileTap={tap}
@@ -92,7 +123,16 @@ export function GameShell({ title, tableLabel, tableId, onNextTable, controls, c
 
       <div className="mx-auto flex min-h-0 w-full max-w-[1440px] flex-1 flex-col gap-2 p-2 sm:gap-3 sm:p-3 lg:flex-row-reverse lg:gap-4 lg:p-4">
         {/* Stage */}
-        <main className="relative min-h-0 flex-1 overflow-hidden rounded-[var(--radius-card)] bg-surface hairline [container-type:size]">
+        <main
+          className="relative min-h-0 flex-1 overflow-hidden rounded-[var(--radius-card)] bg-surface hairline [container-type:size]"
+          style={{ borderColor: `color-mix(in srgb, ${accent} 28%, transparent)` }}
+        >
+          {/* The game's signature colour, as a hairline across the top of the stage. */}
+          <span
+            aria-hidden
+            className="pointer-events-none absolute inset-x-0 top-0 z-10 h-px"
+            style={{ background: `linear-gradient(90deg, transparent, ${accent}, transparent)` }}
+          />
           <AnimatePresence mode="wait">
             <motion.div
               key={tableId}
@@ -105,13 +145,16 @@ export function GameShell({ title, tableLabel, tableId, onNextTable, controls, c
               {children}
             </motion.div>
           </AnimatePresence>
+          <GameTour game={game} />
         </main>
 
         {/* Controls */}
         <aside className="@container shrink-0 rounded-[var(--radius-card)] bg-surface p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] hairline sm:p-4 lg:w-[340px] lg:overflow-y-auto">
           {controls}
+          <SessionStatsBar game={game} />
         </aside>
       </div>
+      <GameHelpSheet game={game} open={helpOpen} onClose={() => setHelpOpen(false)} />
     </div>
   );
 }

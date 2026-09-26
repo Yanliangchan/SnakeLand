@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { rankOf, suitOf, type Card } from "@snakeland/shared";
 import { cn } from "@/lib/cn";
 import { cardVariants, expoOut } from "@/lib/motion";
+import { useSettings } from "@/providers/settings";
 
 const SUIT_GLYPH = { S: "♠", H: "♥", D: "♦", C: "♣" } as const;
 const SUIT_NAME = { S: "spades", H: "hearts", D: "diamonds", C: "clubs" } as const;
@@ -16,13 +17,15 @@ const RANK_NAME: Record<string, string> = { A: "Ace", T: "10", J: "Jack", Q: "Qu
  */
 export function PlayingCard({ card, i, className }: { card: Card | null; i: number; className?: string }) {
   const faceDown = card === null;
+  // Fast mode halves the deal stagger.
+  const { speed } = useSettings();
   const rank = card ? rankOf(card) : null;
   const suit = card ? suitOf(card) : null;
   const red = suit === "H" || suit === "D";
 
   return (
     <motion.div
-      custom={i}
+      custom={i * speed}
       variants={cardVariants}
       initial="hidden"
       animate="visible"

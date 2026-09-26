@@ -400,6 +400,60 @@ export const fairSeeds = pgTable("fair_seeds", {
   updatedAt: updatedAt(),
 });
 
+// ---------------------------------------------------------------------------
+// Crash (one shared live round at a time)
+// ---------------------------------------------------------------------------
+
+export const crashPhaseEnum = pgEnum("crash_phase", ["betting", "running", "crashed"]);
+
+export const crashRounds = pgTable(
+  "crash_rounds",
+  {
+    id: uuid("id").primaryKey(),
+    number: integer("number").notNull(),
+    phase: crashPhaseEnum("phase").notNull().default("betting"),
+    /** Secret until the round crashes. */
+    serverSeed: text("server_seed").notNull(),
+    serverSeedHash: text("server_seed_hash").notNull(),
+    /** Derived from the seed at creation; never sent before the crash. */
+    crashX100: integer("crash_x100").notNull(),
+    opensAt: timestamp("opens_at", { withTimezone: true, precision: 3 }).notNull(),
+    startsAt: timestamp("starts_at", { withTimezone: true, precision: 3 }).notNull(),
+    /** Takeoff + time to reach the crash point. Secret until the crash. */
+    crashesAt: timestamp("crashes_at", { withTimezone: true, precision: 3 }).notNull(),
+    crashedAt: timestamp("crashed_at", { withTimezone: true, precision: 3 }),
+  },
+  (t) => [
+    uniqueIndex("crash_rounds_number_uq").on(t.number),
+    // One unfinished round at a time.
+    uniqueIndex("crash_rounds_one_live_uq").on(sql`(true)`).where(sql`${t.phase} <> 'crashed'`),
+    check("crash_rounds_point_min", sql`${t.crashX100} >= 100`),
+  ],
+);
+
+export const crashBets = pgTable(
+  "crash_bets",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    roundId: uuid("round_id")
+      .notNull()
+      .references(() => crashRounds.id, { onDelete: "restrict" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    amount: bigint("amount", { mode: "number" }).notNull(),
+    autoCashoutX100: integer("auto_cashout_x100"),
+    cashoutX100: integer("cashout_x100"),
+    payout: bigint("payout", { mode: "number" }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex("crash_bets_round_user_uq").on(t.roundId, t.userId),
+    index("crash_bets_user_idx").on(t.userId),
+    check("crash_bets_amount_positive", sql`${t.amount} > 0`),
+  ],
+);
+
 export const minesStatusEnum = pgEnum("mines_status", ["playing", "cashed_out", "bust"]);
 
 export const minesRounds = pgTable(
@@ -498,5 +552,7 @@ export const schema = {
   baccaratRounds,
   rouletteRounds,
   rouletteBets,
+  crashRounds,
+  crashBets,
   adminAudit,
 };

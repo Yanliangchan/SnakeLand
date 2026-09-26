@@ -25,6 +25,16 @@ export async function progressRoutes(
 
   r.get("/v1/profile", async (request) => opts.progress.profile(request.user!.id));
 
+  r.get(
+    "/v1/players/:id",
+    { schema: { params: z.object({ id: z.string().min(1).max(64) }) } },
+    async (request, reply) => {
+      const card = await opts.progress.publicProfile(request.params.id);
+      if (!card) return reply.status(404).send({ error: { code: "PLAYER_NOT_FOUND", message: "Player not found" } });
+      return card;
+    },
+  );
+
   r.post(
     "/v1/wallet/daily-claim",
     { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } },

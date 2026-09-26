@@ -12,6 +12,8 @@ import {
   type LeaderboardKind,
 } from "@snakeland/shared";
 import { AppHeader } from "@/components/AppHeader";
+import { EmptyState, ErrorState } from "@/components/ErrorState";
+import { PlayerCardSheet } from "@/components/PlayerCard";
 import { NAME_COLOUR, PlayerName, TitleBadge } from "@/components/PlayerName";
 import { Segmented } from "@/components/Segmented";
 import { Card } from "@/components/ui";
@@ -37,7 +39,7 @@ function RankDot({ rank, className }: { rank: number; className?: string }) {
   );
 }
 
-function Podium({ entries }: { entries: LeaderboardEntryDTO[] }) {
+function Podium({ entries, onOpen }: { entries: LeaderboardEntryDTO[]; onOpen: (userId: string) => void }) {
   // Visual order 2 · 1 · 3, the winner raised in the middle.
   const order = [entries[1], entries[0], entries[2]];
   const heights = ["h-20", "h-28", "h-16"];
@@ -52,14 +54,14 @@ function Podium({ entries }: { entries: LeaderboardEntryDTO[] }) {
           className="flex min-w-0 flex-col items-center text-center"
         >
           {e ? (
-            <>
+            <button onClick={() => onOpen(e.userId)} className="flex w-full min-w-0 flex-col items-center rounded-[12px] py-1 transition-colors hover:bg-elevated/60">
               <RankDot rank={e.rank} className="size-8 text-[13px]" />
               <p className={cn("mt-2 w-full truncate text-[14px] font-semibold", e.nameColour && NAME_COLOUR[e.nameColour], e.isMe && "underline underline-offset-4")}>
                 {e.name}
               </p>
               {e.title && <TitleBadge title={e.title} className="mt-1" />}
               <p className="mt-1 text-[13px] text-win tabular">{signedChips(e.profit)}</p>
-            </>
+            </button>
           ) : (
             <p className="text-[13px] text-fg-disabled">—</p>
           )}
@@ -108,17 +110,23 @@ export function LeaderboardView() {
   const [kind, setKind] = useState<LeaderboardKind>("weekly");
   const [boards, setBoards] = useState<Partial<Record<LeaderboardKind, LeaderboardDTO>>>({});
   const [error, setError] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [reload, setReload] = useState(0);
   const board = boards[kind];
 
   useEffect(() => {
     let cancelled = false;
     api<LeaderboardDTO>(`/v1/leaderboard?kind=${kind}`)
-      .then((b) => !cancelled && setBoards((prev) => ({ ...prev, [kind]: b })))
+      .then((b) => {
+        if (cancelled) return;
+        setBoards((prev) => ({ ...prev, [kind]: b }));
+        setError(null);
+      })
       .catch(() => !cancelled && setError("Couldn't load the leaderboard"));
     return () => {
       cancelled = true;
     };
-  }, [kind]);
+  }, [kind, reload]);
 
   const rest = board?.entries.slice(3) ?? [];
   const meListed = board?.entries.some((e) => e.isMe);
@@ -149,24 +157,34 @@ export function LeaderboardView() {
             <AnimatePresence mode="wait">
               <motion.div key={kind} {...tableSwitch} className="p-4 sm:p-6">
                 {!board ? (
-                  <p className="py-16 text-center text-[13px] text-fg-muted">{error ?? "Loading…"}</p>
+                  error ? (
+                    <ErrorState title="Couldn’t load the leaderboard" onRetry={() => setReload((n) => n + 1)} />
+                  ) : (
+                    <p className="py-16 text-center text-[13px] text-fg-muted">Loading…</p>
+                  )
                 ) : board.entries.length === 0 ? (
-                  <p className="py-16 text-center text-[13px] text-fg-muted">
-                    Nobody is in profit {kind === "weekly" ? "this week" : "yet"}. This could be you.
-                  </p>
+                  <EmptyState
+                    title={`Nobody is in profit ${kind === "weekly" ? "this week" : "yet"}`}
+                    message="Win a few rounds and this spot is yours."
+                  />
                 ) : (
                   <>
-                    <Podium entries={board.entries.slice(0, 3)} />
+                    <Podium entries={board.entries.slice(0, 3)} onOpen={setOpenId} />
                     {rest.length > 0 && (
                       <ol className="mt-4 divide-y divide-hairline border-t border-hairline">
                         {rest.map((e) => (
-                          <li
-                            key={e.rank}
-                            className={cn("flex items-center gap-3 py-2.5 text-[14px]", e.isMe && "-mx-2 rounded-[10px] bg-elevated px-2")}
-                          >
-                            <RankDot rank={e.rank} />
-                            <PlayerName tag={e} className="flex-1" />
-                            <span className="text-[13px] text-win tabular">{signedChips(e.profit)}</span>
+                          <li key={e.rank}>
+                            <button
+                              onClick={() => setOpenId(e.userId)}
+                              className={cn(
+                                "-mx-2 flex w-[calc(100%+1rem)] items-center gap-3 rounded-[10px] px-2 py-2.5 text-left text-[14px] transition-colors hover:bg-elevated/60",
+                                e.isMe && "bg-elevated",
+                              )}
+                            >
+                              <RankDot rank={e.rank} />
+                              <PlayerName tag={e} className="flex-1" />
+                              <span className="text-[13px] text-win tabular">{signedChips(e.profit)}</span>
+                            </button>
                           </li>
                         ))}
                       </ol>
@@ -174,11 +192,14 @@ export function LeaderboardView() {
                   </>
                 )}
                 {board?.lastPlace && (
-                  <div className="mt-4 flex items-center gap-3 border-t border-hairline pt-3 text-[14px]">
+                  <button
+                    onClick={() => setOpenId(board.lastPlace!.userId)}
+                    className="mt-4 flex w-full items-center gap-3 border-t border-hairline pt-3 text-left text-[14px]"
+                  >
                     <span className="grid h-7 shrink-0 place-items-center rounded-full px-2 text-[11px] text-fg-muted hairline">Last</span>
                     <PlayerName tag={board.lastPlace} className={cn("flex-1", board.lastPlace.isMe && "underline underline-offset-4")} />
                     <span className="text-[13px] text-loss tabular">{signedChips(board.lastPlace.profit)}</span>
-                  </div>
+                  </button>
                 )}
                 {board && me && !meListed && !board.lastPlace?.isMe && (
                   <div className="mt-4 flex items-center justify-between rounded-[12px] bg-elevated px-3 py-2.5 text-[13px] hairline">
@@ -211,6 +232,7 @@ export function LeaderboardView() {
           </Card>
         </div>
       </main>
+      <PlayerCardSheet userId={openId} onClose={() => setOpenId(null)} />
     </div>
   );
 }

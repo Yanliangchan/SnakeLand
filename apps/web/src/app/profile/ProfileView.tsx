@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import { ALL_TIME_PERKS, GAMES, isGameId, type ProfileDTO } from "@snakeland/shared";
 import { AppHeader } from "@/components/AppHeader";
+import { ErrorState } from "@/components/ErrorState";
 import { NAME_COLOUR, PlayerName, TitleBadge } from "@/components/PlayerName";
 import { Avatar, ButtonLink, Card } from "@/components/ui";
 import { api } from "@/lib/api";
@@ -62,6 +63,7 @@ export function ProfileView() {
   const { me } = useSession();
   const [profile, setProfile] = useState<ProfileDTO | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [reload, setReload] = useState(0);
   const balance = me?.wallet.balance;
 
   useEffect(() => {
@@ -72,7 +74,7 @@ export function ProfileView() {
     return () => {
       cancelled = true;
     };
-  }, [balance]);
+  }, [balance, reload]);
 
   if (!me) return null;
   const p = profile;
@@ -112,7 +114,7 @@ export function ProfileView() {
           </motion.div>
         )}
 
-        {error && !p && <p className="mt-6 text-center text-[13px] text-loss">{error}</p>}
+        {error && !p && <ErrorState title="Couldn’t load your profile" onRetry={() => setReload((n) => n + 1)} />}
 
         {p && (
           <div className="mt-3 grid gap-3 lg:grid-cols-[1fr_340px]">

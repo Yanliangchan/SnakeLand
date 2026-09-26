@@ -15,6 +15,7 @@ import { Button } from "@/components/ui";
 import { ApiError } from "@/lib/api";
 import { baccaratApi } from "@/lib/baccarat-api";
 import { fadeUp } from "@/lib/motion";
+import { recordRound } from "@/lib/session-stats";
 import { useSession } from "@/providers/session";
 import { useSettings } from "@/providers/settings";
 import { FairnessDialog, FairRow, VerifiedBadge } from "../shared/FairnessDialog";
@@ -89,6 +90,7 @@ export function BaccaratGame() {
         clientSeed: table.shoe.clientSeed ? undefined : clientSeed.next(),
       });
       play("flip");
+      recordRound("baccarat", u.round.totalBet, u.round.totalPayout);
       setRound(u.round);
       setTable(u.table);
       setWallet({ balance: u.balance });
@@ -103,15 +105,20 @@ export function BaccaratGame() {
       if (n.revealedShoe) setRevealed(n.revealedShoe);
     });
 
-  // Enter deals.
+  // Enter deals; P / B / T bet the selected chip; C clears.
   const keys = useRef<(e: KeyboardEvent) => void>(() => {});
   useEffect(() => {
     keys.current = (e) => {
       if (fairOpen || e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.target instanceof HTMLElement && e.target.closest("input, textarea, button")) return;
+      const k = e.key.toLowerCase();
       if (e.key === "Enter") {
         e.preventDefault();
         void deal();
+      } else if (k === "p" || k === "b" || k === "t") {
+        placeOn(k === "p" ? "player" : k === "b" ? "banker" : "tie");
+      } else if (k === "c") {
+        spots.clear();
       }
     };
   });
@@ -124,6 +131,7 @@ export function BaccaratGame() {
   return (
     <>
       <GameShell
+        game="baccarat"
         title="Baccarat"
         tableId={table?.id ?? "loading"}
         tableLabel={table ? `Table ${table.id.slice(0, 4).toUpperCase()}` : undefined}

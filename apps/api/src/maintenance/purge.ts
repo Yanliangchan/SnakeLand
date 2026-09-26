@@ -34,6 +34,7 @@ export class PurgeService {
     await tx.execute(sql`SET LOCAL snk.purge = 'on'`);
     const statements = [
       sql`DELETE FROM roulette_bets WHERE user_id = ${userId}`,
+      sql`DELETE FROM crash_bets WHERE user_id = ${userId}`,
       sql`DELETE FROM blackjack_rounds WHERE user_id = ${userId}`,
       sql`DELETE FROM blackjack_shoes WHERE user_id = ${userId}`,
       sql`DELETE FROM blackjack_tables WHERE user_id = ${userId}`,
@@ -89,6 +90,13 @@ export class PurgeService {
     await b("roulette_rounds", () => sql`DELETE FROM roulette_rounds WHERE id IN (
       SELECT r.id FROM roulette_rounds r WHERE r.phase = 'settled' AND r.settled_at < ${cutoff}
       AND NOT EXISTS (SELECT 1 FROM roulette_bets b WHERE b.round_id = r.id) LIMIT ${BATCH})`);
+
+    await b("crash_bets", () => sql`DELETE FROM crash_bets WHERE id IN (
+      SELECT b.id FROM crash_bets b JOIN crash_rounds r ON r.id = b.round_id
+      WHERE r.phase = 'crashed' AND r.crashed_at < ${cutoff} LIMIT ${BATCH})`);
+    await b("crash_rounds", () => sql`DELETE FROM crash_rounds WHERE id IN (
+      SELECT r.id FROM crash_rounds r WHERE r.phase = 'crashed' AND r.crashed_at < ${cutoff}
+      AND NOT EXISTS (SELECT 1 FROM crash_bets b WHERE b.round_id = r.id) LIMIT ${BATCH})`);
 
     await b("blackjack_rounds", () => sql`DELETE FROM blackjack_rounds WHERE id IN (
       SELECT id FROM blackjack_rounds WHERE status = 'settled' AND settled_at < ${cutoff} LIMIT ${BATCH})`);

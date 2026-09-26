@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { AppHeader } from "@/components/AppHeader";
+import { Segmented } from "@/components/Segmented";
 import { Avatar, Button, ButtonLink, Card, Toggle } from "@/components/ui";
 import { api } from "@/lib/api";
 import { fadeUp } from "@/lib/motion";
@@ -13,7 +14,7 @@ import { useSettings } from "@/providers/settings";
 export function SettingsView() {
   const router = useRouter();
   const { me, signOut } = useSession();
-  const { soundOn, setSoundOn, play } = useSettings();
+  const { prefs, setPrefs, soundOn, setSoundOn, play, haptic, canVibrate } = useSettings();
   const [signingOut, setSigningOut] = useState(false);
   if (!me) return null;
 
@@ -53,7 +54,49 @@ export function SettingsView() {
           />
         </Card>
 
-        <motion.div {...fadeUp} transition={{ ...fadeUp.transition, delay: 0.1 }} className="mt-10">
+        <Card className="mt-3 flex items-center justify-between" transition={{ ...fadeUp.transition, delay: 0.07 }}>
+          <div>
+            <p className="text-[15px] font-medium">Haptics</p>
+            <p className="mt-0.5 text-[13px] text-fg-muted">
+              {canVibrate ? "Light vibrations on chips, cards and wins." : "Not supported on this device or browser."}
+            </p>
+          </div>
+          <Toggle
+            label="Haptics"
+            checked={prefs.haptics}
+            onChange={(on) => {
+              setPrefs({ haptics: on });
+              if (on) setTimeout(() => haptic("heavy"), 0);
+            }}
+          />
+        </Card>
+
+        <Card className="mt-3" transition={{ ...fadeUp.transition, delay: 0.09 }}>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-[15px] font-medium">Motion</p>
+              <p className="mt-0.5 text-[13px] text-fg-muted">Reduce movement, or follow your device setting.</p>
+            </div>
+            <Segmented
+              value={prefs.motion}
+              onChange={(motion) => setPrefs({ motion })}
+              options={[
+                { value: "system", label: "System" },
+                { value: "reduced", label: "Reduced" },
+                { value: "full", label: "Full" },
+              ]}
+            />
+          </div>
+          <div className="mt-4 flex items-center justify-between border-t border-hairline pt-4">
+            <div>
+              <p className="text-[15px] font-medium">Fast mode</p>
+              <p className="mt-0.5 text-[13px] text-fg-muted">Quicker deals, drops and reveals.</p>
+            </div>
+            <Toggle label="Fast mode" checked={prefs.fast} onChange={(fast) => setPrefs({ fast })} />
+          </div>
+        </Card>
+
+        <motion.div {...fadeUp} transition={{ ...fadeUp.transition, delay: 0.12 }} className="mt-10">
           <Button
             variant="secondary"
             loading={signingOut}

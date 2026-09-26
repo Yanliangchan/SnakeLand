@@ -19,6 +19,7 @@ import { ApiError } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { plinkoApi } from "@/lib/instant-api";
 import { fadeUp, tap, tapTransition } from "@/lib/motion";
+import { recordRound } from "@/lib/session-stats";
 import { useSession } from "@/providers/session";
 import { useSettings } from "@/providers/settings";
 import { ChipTray, StakeSummary, useChipSlip } from "../shared/ChipSlip";
@@ -184,6 +185,7 @@ export function PlinkoGame() {
       syncBalance();
       setBalls((b) => b.filter((x) => x.id !== id));
       if (!d) return;
+      recordRound("plinko", d.bet, d.payout);
       play(d.multiplierX100 > 100 ? "chime" : "click");
       setHits((h) => {
         const next = [...h];
@@ -222,6 +224,7 @@ export function PlinkoGame() {
   return (
     <>
       <GameShell
+        game="plinko"
         title="Plinko"
         tableId="plinko"
         controls={

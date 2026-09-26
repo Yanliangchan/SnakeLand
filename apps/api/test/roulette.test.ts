@@ -31,7 +31,7 @@ let clock = new Date();
 const roulette = new RouletteService(db, wallet, bus, () => clock);
 const quiet = { error: () => {} };
 const presence = new MemoryPresence();
-presence.set("viewers", { w1: 1, w2: 1, w3: 1 }, true);
+presence.set("viewers", { "roulette:w1": 1, "roulette:w2": 1, "roulette:w3": 1 }, true);
 const dealer = new RouletteDealer(db, wallet, roulette, bus, new AlwaysLeader(), presence, quiet);
 const TABLE = crypto.randomUUID();
 
@@ -192,9 +192,11 @@ describe("Roulette dealer idling", () => {
     const live = async () =>
       (await db.select().from(rouletteRounds).where(eq(rouletteRounds.wheelId, "w3"))).filter((x) => x.phase !== "settled");
     expect(await live()).toHaveLength(0);
+    // Nothing live and nobody watching: the loop reports it can sleep.
+    expect(await idle.tick(new Date(later.getTime() + 500))).toBe(false);
 
-    empty.set("someone", { w3: 1 });
-    await bus.publish({ kind: "wake", wheelId: "w3" });
+    empty.set("someone", { "roulette:w3": 1 });
+    await bus.publish({ kind: "wake", room: "roulette:w3" });
     await idle.tick(new Date(later.getTime() + 1_000));
     expect(await live()).toHaveLength(1);
     await idle.stop();
@@ -212,7 +214,7 @@ describe("Roulette WebSocket", () => {
     app = built.app;
     await built.dealer.tick(new Date(Date.now() + 2 * 60 * 60_000));
     const address = await app.listen({ port: 0, host: "127.0.0.1" });
-    url = address.replace("http", "ws") + "/v1/roulette/ws";
+    url = address.replace("http", "ws") + "/v1/live/ws";
     const res = await app.inject({
       method: "POST",
       url: "/api/auth/sign-up/email",
@@ -241,7 +243,7 @@ describe("Roulette WebSocket", () => {
 
   it("accepts a single-use ticket instead of a cookie", async () => {
     const issue = () =>
-      app.inject({ method: "POST", url: "/v1/roulette/ws-ticket", headers: { cookie, origin: ORIGIN } }).then((r) => r.json().ticket as string);
+      app.inject({ method: "POST", url: "/v1/live/ws-ticket", headers: { cookie, origin: ORIGIN } }).then((r) => r.json().ticket as string);
     const ticket = await issue();
     expect(ticket).toMatch(/^[A-Za-z0-9_-]{43}$/);
     const ok = await new Promise<{ ws: WebSocket; status?: number }>((resolve) => {
@@ -265,14 +267,14 @@ describe("Roulette WebSocket", () => {
       ws.on("unexpected-response", (_q, res) => resolve(res.statusCode));
     });
     expect(foreign).toBe(403);
-    expect((await app.inject({ method: "POST", url: "/v1/roulette/ws-ticket", headers: { origin: ORIGIN } })).statusCode).toBe(401);
+    expect((await app.inject({ method: "POST", url: "/v1/live/ws-ticket", headers: { origin: ORIGIN } })).statusCode).toBe(401);
   });
 
   it("streams wheel state after join and answers pings", async () => {
     const { ws } = await connect({ origin: ORIGIN, cookie });
     const received: RouletteServerMessage[] = [];
     ws.on("message", (d) => received.push(JSON.parse(d.toString())));
-    ws.send(JSON.stringify({ type: "join", wheelId: "w2" }));
+    ws.send(JSON.stringify({ type: "join", room: "roulette:w2" }));
     ws.send(JSON.stringify({ type: "ping" }));
     ws.send("not json");
     await new Promise((r) => setTimeout(r, 400));

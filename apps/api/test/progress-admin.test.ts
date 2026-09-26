@@ -79,6 +79,14 @@ describe("Leaderboards, titles and perks", () => {
     expect((await progress.profile(loser)).user.title).toBe("Safety Stores");
   });
 
+  it("shows public cards for registered players only, without private fields", async () => {
+    const card = await progress.publicProfile(a);
+    expect(card).toMatchObject({ user: { id: a, name: "Alpha", nameColour: "gold" }, stats: { allTimeRank: 1 } });
+    expect(JSON.stringify(card)).not.toMatch(/balance|email|nextDailyClaimAt/);
+    expect(await progress.publicProfile(guest)).toBeNull();
+    expect(await progress.publicProfile("nope")).toBeNull();
+  });
+
   it("gives the all-time top 3 bigger daily claims, and #1 a 12h cooldown", async () => {
     const first = await progress.claimDaily(a, false);
     expect(first.amount).toBe(DAILY_CLAIM_AMOUNT * 1.2);

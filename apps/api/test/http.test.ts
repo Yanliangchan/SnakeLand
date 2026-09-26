@@ -127,6 +127,20 @@ describe("HTTP", () => {
     expect(await db.select().from(users).where(eq(users.id, me.user.id))).toHaveLength(0);
   });
 
+  it("deletes a guest when it signs out", async () => {
+    const guest = await app.inject({ method: "POST", url: "/api/auth/sign-in/anonymous", headers: { origin: ORIGIN } });
+    const cookie = cookieFrom(guest);
+    const id = (await app.inject({ method: "GET", url: "/v1/me", headers: { cookie } })).json().user.id as string;
+    const out = await app.inject({
+      method: "POST",
+      url: "/api/auth/sign-out",
+      headers: { cookie, origin: ORIGIN, "content-type": "application/json" },
+      payload: "{}",
+    });
+    expect(out.statusCode).toBe(200);
+    expect(await db.select().from(users).where(eq(users.id, id))).toHaveLength(0);
+  });
+
   it("rejects non-JSON bodies", async () => {
     const res = await app.inject({
       method: "POST",

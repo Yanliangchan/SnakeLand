@@ -1,5 +1,5 @@
 import { betterAuth } from "better-auth";
-import { APIError } from "better-auth/api";
+import { APIError, createAuthMiddleware, getSessionFromCtx } from "better-auth/api";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { anonymous } from "better-auth/plugins";
 import { eq } from "drizzle-orm";
@@ -102,6 +102,17 @@ export function createAuth({
         // Only trust the header our own bridge writes from Fastify's proxy-aware IP.
         ipAddressHeaders: [CLIENT_IP_HEADER],
       },
+    },
+
+    hooks: {
+      // A guest that signs out can never come back (the cookie was its only key),
+      // so delete it and everything it owns right away.
+      before: createAuthMiddleware(async (ctx) => {
+        if (ctx.path !== "/sign-out" || !purgeGuest) return;
+        const session = await getSessionFromCtx(ctx).catch(() => null);
+        const user = session?.user as { id: string; isAnonymous?: boolean | null } | undefined;
+        if (user?.isAnonymous) await purgeGuest(user.id);
+      }),
     },
 
     databaseHooks: {

@@ -6,6 +6,8 @@ export * from "./blackjack";
 export * from "./instant";
 export * from "./baccarat";
 export * from "./roulette";
+export * from "./crash";
+export * from "./live";
 export * from "./progress";
 export * from "./api";
 export * from "./admin";

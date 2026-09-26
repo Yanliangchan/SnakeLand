@@ -13,6 +13,7 @@ import {
 import { GameShell } from "@/components/GameShell";
 import { ApiError } from "@/lib/api";
 import { blackjackApi } from "@/lib/blackjack-api";
+import { recordRound } from "@/lib/session-stats";
 import { useSession } from "@/providers/session";
 import { useSettings } from "@/providers/settings";
 import { BetControls, type Mode } from "./BetControls";
@@ -89,6 +90,9 @@ export function BlackjackGame() {
   }, [setSlip]);
 
   function apply(u: BlackjackUpdateDTO, isNewRound: boolean) {
+    if (u.round.phase === "settled" && (isNewRound || round?.phase !== "settled")) {
+      recordRound("blackjack", u.round.totalBet, u.round.totalPayout ?? 0);
+    }
     setBaseSeq(isNewRound ? 0 : maxSeq(round) + 1);
     setRound(u.round);
     setTable((t) => (t ? { ...t, shoe: u.shoe, recent: u.recent, streak: u.streak } : t));
@@ -170,6 +174,7 @@ export function BlackjackGame() {
   return (
     <>
       <GameShell
+        game="blackjack"
         title="Blackjack"
         tableId={table?.id ?? "loading"}
         tableLabel={table ? `Table ${table.id.slice(0, 4).toUpperCase()}` : undefined}

@@ -19,6 +19,7 @@ import { cn } from "@/lib/cn";
 import { rouletteApi, useRouletteSocket } from "@/lib/roulette-api";
 import { useMedia } from "@/lib/use-media";
 import { fade, fadeUp } from "@/lib/motion";
+import { recordRound } from "@/lib/session-stats";
 import { useSession } from "@/providers/session";
 import { FairnessDialog, FairRow, VerifiedBadge } from "../shared/FairnessDialog";
 import { ChipSelector, useSpotChips } from "../shared/SpotChips";
@@ -89,6 +90,7 @@ export function RouletteGame() {
     onSettled: (s) => {
       setWallet({ balance: s.balance });
       setSettlement(s);
+      recordRound("roulette", s.staked, s.payout);
     },
     onState: (w) => {
       const r = w.round;
@@ -202,6 +204,24 @@ export function RouletteGame() {
     setError(null);
   };
 
+  // R repeats last bets, C clears, N moves to the next wheel.
+  const keys = useRef<(e: KeyboardEvent) => void>(() => {});
+  useEffect(() => {
+    keys.current = (e) => {
+      if (fairOpen || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.target instanceof HTMLElement && e.target.closest("input, textarea, button, [role=dialog]")) return;
+      const k = e.key.toLowerCase();
+      if (k === "r") rebet();
+      else if (k === "c") void clearBets();
+      else if (k === "n") nextTable();
+    };
+  });
+  useEffect(() => {
+    const l = (e: KeyboardEvent) => keys.current(e);
+    window.addEventListener("keydown", l);
+    return () => window.removeEventListener("keydown", l);
+  }, []);
+
   const mySettlement = settlement && settlement.roundId === round?.id ? settlement : null;
   const net = mySettlement ? mySettlement.payout - mySettlement.staked : 0;
   const status = !round
@@ -217,6 +237,7 @@ export function RouletteGame() {
   return (
     <>
       <GameShell
+        game="roulette"
         title="Roulette"
         tableId={`${wheelId}-${tableId}`}
         tableLabel={ROULETTE_WHEELS[wheelIndex]!.name}

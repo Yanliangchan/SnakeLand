@@ -5,6 +5,7 @@ import Link from "next/link";
 import { GAMES, GAME_IDS } from "@snakeland/shared";
 import { AppHeader } from "@/components/AppHeader";
 import { GameGlyph } from "@/components/GameGlyph";
+import { GAME_ACCENT } from "@/lib/games-ui";
 import { BalanceCounter } from "@/components/ui";
 import { expoOut, fadeUp, tap, tapTransition } from "@/lib/motion";
 import { useSession } from "@/providers/session";
@@ -100,15 +101,18 @@ export function Lobby() {
                 <motion.div whileTap={tap} transition={tapTransition}>
                   <Link
                     href={`/play/${id}`}
-                    className="group flex h-full min-h-32 flex-col justify-between rounded-[var(--radius-card)] bg-surface p-4 transition-colors hairline hover:border-hairline-strong sm:min-h-36 sm:p-5 xl:min-h-44"
+                    style={{ "--accent": GAME_ACCENT[id] } as React.CSSProperties}
+                    className="group flex h-full min-h-32 flex-col justify-between rounded-[var(--radius-card)] border border-[color-mix(in_srgb,var(--accent)_28%,transparent)] bg-surface p-4 transition-colors hover:border-[color-mix(in_srgb,var(--accent)_70%,transparent)] sm:min-h-36 sm:p-5 xl:min-h-44"
                   >
                     <div className="flex items-start justify-between">
-                      <span className="text-fg-muted transition-colors group-hover:text-fg">
+                      <span className="text-[var(--accent)] opacity-80 transition-opacity group-hover:opacity-100">
                         <GameGlyph game={id} />
                       </span>
-                      {!game.available && (
-                        <span className="rounded-full px-2 py-0.5 text-[11px] text-fg-muted hairline">Soon</span>
-                      )}
+                      {game.kind === "live" || id === "roulette" ? (
+                        <span className="flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] text-fg-muted hairline">
+                          <span className="size-1.5 rounded-full bg-win" /> Live
+                        </span>
+                      ) : null}
                     </div>
                     <div>
                       <p className="text-[16px] font-semibold tracking-[var(--tracking-tightish)]">{game.name}</p>

@@ -125,12 +125,12 @@ Mines has a **3% house edge** and Plinko **1%**. Bets are 10–10,000, and multi
 - **Bets**: straights, splits, streets, corners, six-lines, the zero splits/trios and first four, dozens, columns,
   and the even-money bets. That's a catalogue of every legal bet, and the server only accepts bets from it.
   Everything pays `stake × 36 / n` (every bet has the same 2.70% edge), with at least 10 per bet and at most
-  5,000 per player per spin.
-- **Architecture**: bets go through REST, the same hardened path as every other game. The WebSocket
-  (`/v1/roulette/ws`) is a read-only feed of wheel state, countdowns, player counts, and your own settlement.
-  One API instance holds a Redis lease (`snk:roulette:leader`) and runs the dealer. The dealer is a stateless
-  tick that reads each wheel's round from Postgres, so if the leader dies another instance takes over mid-round.
-  Events fan out to every instance's sockets through Redis pub/sub.
+  10,000 per player per spin.
+- **Architecture**: bets go through REST, the same hardened path as every other game. The live WebSocket
+  (`/v1/live/ws`, shared with Crash) is a read-only feed: each socket joins one room (`roulette:w1`…`w3`,
+  `crash`) and gets its state, countdowns, player counts and its own settlements. One API instance holds a Redis
+  lease (`snk:roulette:leader`) and runs the dealer. Round state lives in Postgres, so if the leader dies another
+  instance takes over mid-round. Events fan out to every instance's sockets through Redis pub/sub.
 - **Integrity**: bets take a shared lock on the round, and closing it needs an exclusive one. A bet racing the
   buzzer is either in the spin or rejected, never lost (tested with concurrent bets during the close). Payouts
   are credited in the same transaction that settles the round.
@@ -140,6 +140,35 @@ Mines has a **3% house edge** and Plinko **1%**. Bets are 10–10,000, and multi
 - **WebSocket security**: the Origin must be on the allow-list (preventing cross-site WebSocket hijacking), the
   session cookie is required, messages are capped at 2 KB and 30 per 10s and validated with Zod, there are at
   most 5 sockets per user, and a heartbeat drops dead connections.
+
+## Crash (live)
+
+- **Round**: 7s of betting, then the multiplier grows as `e^(0.00006·t)` (2× after ~11.6s, 10× after ~38s)
+  until it crashes; 3.5s later the next round opens. One bet per player per round, 10–10,000 chips, cancellable
+  until takeoff. Cash out by hand at the server's current multiplier, or set an auto cash-out (1.01×–10,000×).
+  Bets can be queued for the next round.
+- **Odds**: crash point = `0.99 / (1 − r)` floored to hundredths, from one fair float `r`. `P(crash ≥ m) = 0.99/m`,
+  so every cash-out target returns 99% (a 1% edge). About 2% of rounds crash instantly at 1.00×. A test checks
+  the distribution.
+- **Fairness**: the round's seed hash is published when betting opens. The crash point and its time stay on the
+  server until the crash, then the seed is revealed and the Fair panel recomputes the crash point.
+- **Integrity**: bets and cash-outs lock the round row (shared), takeoff and the crash take it exclusively, and a
+  cash-out is only accepted before the crash time. Auto cash-outs are paid at their exact multiplier. Every payout
+  has an idempotency key.
+- **The snake**: the graph is a snake slithering up the curve on a single canvas; cash-outs show as flags on its
+  body, and at the crash it bites (turns red and shakes). It only animates while something is moving.
+
+## Live games only run while someone is playing
+
+- Each live game (the three roulette wheels, crash) has a room. Presence counts sockets per room across
+  instances. A room nobody is in finishes its current round and then its loop stops completely: no timers, no
+  Redis, no Postgres. Opening the game wakes it within a tick.
+- The browser only opens the live socket on the Roulette and Crash pages, and drops it after a minute in a
+  background tab, so a forgotten tab doesn't keep a game running.
+- The hub's heartbeat and presence timers only run while at least one socket is connected.
+- Every game is its own JavaScript chunk, loaded when you open it (with a short entry animation), so the lobby
+  never downloads game code.
+- Both services start with `node` directly (no pnpm wrapper) and a capped V8 heap.
 
 ## Leaderboards, perks and profiles
 
@@ -158,14 +187,26 @@ transaction, so rankings never scan the ledger. Only registered, non-suspended p
 
 A background job runs every 10 minutes on one instance (Redis lease):
 
-- **Guests** are deleted with everything they own when they leave ("Leave guest session"), right after their
-  chips move into a new account, or after 3 days without activity. Registered accounts are never deleted.
-- **Finished game rows** (rounds, shoes, closed tables, drops, settled roulette bets) are deleted after 7 days.
+- **Guests** are deleted with everything they own when they sign out or leave, right after their chips move
+  into a new account, or after 3 days without activity. Registered accounts are never deleted.
+- **Finished game rows** (rounds, shoes, closed tables, drops, settled roulette and crash bets) are deleted after
+  7 days.
   Money records (the ledger) stay, so balances always reconcile.
 - Expired sessions/verifications, rate-limit rows older than a day, and admin audit rows older than 90 days.
 
-Resource use: the Postgres pool is 5 connections, per-request logging is off in production, and a roulette wheel
-nobody is watching finishes its round and then sleeps (no DB queries) until someone opens it.
+Resource use: the Postgres pool is 5 connections and per-request logging is off in production (see also "Live
+games only run while someone is playing").
+
+## Player experience
+
+- **Help and tour**: the first visit to each game shows a three-step tour; `?` (or the help button) opens how to
+  play plus every keyboard shortcut.
+- **Session stats**: each game shows this tab's rounds, wagered, net and best multiplier.
+- **Mines**: after a bust you see what cashing out one pick earlier would have paid, and can replay the round.
+- **Settings**: sound, haptics (vibration on supported phones), motion (system / reduced / full) and fast mode.
+- **Profiles**: tap any leaderboard name for that player's public card (no balance or email).
+- **Installable**: a web app manifest and icons, so "Add to Home Screen" opens it full screen.
+- Offline banner, retry cards for failed loads, and an error page that never shows a blank screen.
 
 ## Admin console
 
@@ -218,7 +259,7 @@ the pnpm workspace resolves:
 | | API | Web |
 | --- | --- | --- |
 | Build command | `pnpm --filter @snakeland/api build` | `pnpm --filter @snakeland/web build` |
-| Start command | `pnpm --filter @snakeland/api start` | `pnpm --filter @snakeland/web start` |
+| Start command | `node --max-old-space-size=192 apps/api/dist/server.js` | `node --max-old-space-size=256 apps/web/node_modules/next/dist/bin/next start apps/web` |
 | Pre-deploy | `pnpm --filter @snakeland/api db:migrate:prod` | — |
 | Healthcheck | `/healthz` | — |
 | Watch paths | `apps/api/**`, `packages/shared/**`, `pnpm-lock.yaml` | `apps/web/**`, `packages/shared/**`, `pnpm-lock.yaml` |

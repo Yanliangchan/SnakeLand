@@ -39,7 +39,7 @@ export const config = {
   matcher: [
     {
       // API traffic (proxied) is JSON; it needs no page CSP or nonce.
-      source: "/((?!_next/static|_next/image|favicon.ico|icon.svg|api/|v1/).*)",
+      source: "/((?!_next/static|_next/image|favicon.ico|icon.svg|.*\\.png$|manifest.webmanifest|api/|v1/).*)",
       missing: [
         { type: "header", key: "next-router-prefetch" },
         { type: "header", key: "purpose", value: "prefetch" },

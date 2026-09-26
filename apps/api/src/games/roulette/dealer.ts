@@ -6,16 +6,19 @@ import {
   hashServerSeed,
   rouletteResult,
   rouletteReturn,
+  rouletteRoom,
   type RouletteSettlementDTO,
   type WheelId,
 } from "@snakeland/shared";
 import type { Db } from "../../db/client";
 import { rouletteBets, rouletteRounds } from "../../db/schema";
 import type { Bus } from "../../realtime/bus";
+import { IdleLoop } from "../../realtime/idle-loop";
 import type { Leadership } from "../../realtime/leader";
-import type { Presence, WheelCounts } from "../../realtime/presence";
+import type { LiveBusMessage } from "../../realtime/messages";
+import type { Presence, RoomCounts } from "../../realtime/presence";
 import type { WalletService } from "../../wallet/wallet-service";
-import type { RoundRow, RouletteBusMessage, RouletteService } from "./service";
+import type { RoundRow, RouletteService } from "./service";
 
 const TICK_MS = 200;
 const PRESENCE_REFRESH_MS = 2_000;
@@ -29,16 +32,19 @@ type Wait = { until: number } | { idle: true };
  * exactly where it stopped. To stay cheap, the dealer remembers each wheel's
  * next deadline and skips the database until it passes, and a wheel nobody
  * is watching finishes its current round and then sleeps until a viewer
- * shows up (the hub publishes a "wake" message on join).
+ * shows up (the hub publishes a "wake" message on join). When every wheel is
+ * asleep the loop itself stops: no timer, no Redis, no Postgres.
  */
 export class RouletteDealer {
-  private timer: NodeJS.Timeout | null = null;
   private ticking = false;
   private wasLeader = false;
   private waits = new Map<WheelId, Wait>();
-  private viewers: WheelCounts | null = null;
+  private viewers: RoomCounts | null = null;
   private viewersAt = 0;
   private readonly unsubscribe: () => void;
+  private readonly loop = new IdleLoop(TICK_MS, () => this.tick());
+  /** Only a started dealer runs its own timer (tests drive tick() directly). */
+  private started = false;
 
   constructor(
     private readonly db: Db,
@@ -50,26 +56,32 @@ export class RouletteDealer {
     private readonly log: { error: (obj: unknown, msg?: string) => void } = console,
   ) {
     this.unsubscribe = bus.subscribe((m) => {
-      const msg = m as RouletteBusMessage;
-      if (msg.kind !== "wake") return;
-      this.waits.delete(msg.wheelId);
+      const msg = m as LiveBusMessage;
+      const wheel = msg.kind === "wake" ? ROULETTE_WHEELS.find((w) => rouletteRoom(w.id) === msg.room) : undefined;
+      if (!wheel) return;
+      this.waits.delete(wheel.id);
       this.viewersAt = 0;
+      if (this.started) this.loop.wake();
     });
   }
 
+  /** Runs until nothing is live, then sleeps until someone opens a wheel. */
   start() {
-    if (this.timer) return;
-    this.timer = setInterval(() => void this.tick(), TICK_MS);
+    this.started = true;
+    this.loop.wake();
+  }
+
+  get awake() {
+    return this.loop.awake;
   }
 
   async stop() {
-    if (this.timer) clearInterval(this.timer);
-    this.timer = null;
+    this.loop.stop();
     this.unsubscribe();
     await this.leadership.release();
   }
 
-  private async viewerCounts(): Promise<WheelCounts> {
+  private async viewerCounts(): Promise<RoomCounts> {
     if (!this.viewers || Date.now() - this.viewersAt >= PRESENCE_REFRESH_MS) {
       this.viewers = await this.presence.totals();
       this.viewersAt = Date.now();
@@ -77,28 +89,39 @@ export class RouletteDealer {
     return this.viewers;
   }
 
-  /** Advance every wheel whose deadline has passed. Safe to call concurrently or from tests. */
-  async tick(now = new Date()): Promise<void> {
-    if (this.ticking) return;
+  /**
+   * Advance every wheel whose deadline has passed. Safe to call concurrently
+   * or from tests. Returns false once there is nothing left to do.
+   */
+  async tick(now = new Date()): Promise<boolean> {
+    if (this.ticking) return true;
     this.ticking = true;
     try {
       const leader = await this.leadership.isLeader();
       // Another instance may have moved the wheels while we weren't leading.
       if (leader !== this.wasLeader) this.waits.clear();
       this.wasLeader = leader;
-      if (!leader) return;
       const viewers = await this.viewerCounts();
+      const watched = (id: WheelId) => (viewers[rouletteRoom(id)] ?? 0) > 0;
+      const anyWatched = ROULETTE_WHEELS.some((w) => watched(w.id));
+      // A follower stays awake only while someone watches, ready to take over.
+      if (!leader) return anyWatched;
       for (const wheel of ROULETTE_WHEELS) {
         const wait = this.waits.get(wheel.id);
         if (wait && "until" in wait && now.getTime() < wait.until) continue;
-        if (wait && "idle" in wait && viewers[wheel.id] === 0) continue;
+        if (wait && "idle" in wait && !watched(wheel.id)) continue;
         this.waits.delete(wheel.id);
         try {
-          await this.advance(wheel.id, wheel.offsetMs, now, viewers[wheel.id] > 0);
+          await this.advance(wheel.id, wheel.offsetMs, now, watched(wheel.id));
         } catch (err) {
           this.log.error({ err, wheel: wheel.id }, "roulette tick failed");
         }
       }
+      const allAsleep = ROULETTE_WHEELS.every((w) => {
+        const wait = this.waits.get(w.id);
+        return wait !== undefined && "idle" in wait;
+      });
+      return anyWatched || !allAsleep;
     } finally {
       this.ticking = false;
     }
@@ -243,7 +266,7 @@ export class RouletteDealer {
     await this.publishState(round.wheelId as WheelId);
     for (const s of settlements) {
       const balance = s.balance ?? (await this.wallet.getWallet(s.userId)).balance;
-      const msg: RouletteBusMessage = {
+      const msg: LiveBusMessage = {
         kind: "user",
         userId: s.userId,
         message: { type: "settled", settlement: { ...s.settlement, balance } },
@@ -254,7 +277,7 @@ export class RouletteDealer {
 
   private async publishState(wheelId: WheelId) {
     const wheel = await this.roulette.wheelState(wheelId);
-    const msg: RouletteBusMessage = { kind: "wheel", wheelId, message: { type: "state", wheel } };
+    const msg: LiveBusMessage = { kind: "room", room: rouletteRoom(wheelId), message: { type: "state", wheel } };
     await this.bus.publish(msg);
   }
 }

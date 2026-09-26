@@ -11,6 +11,7 @@ import {
   type LeaderboardKind,
   type PlayerTag,
   type ProfileDTO,
+  type PublicProfileDTO,
 } from "@snakeland/shared";
 import type { Db } from "../db/client";
 import { users } from "../db/schema";
@@ -161,8 +162,16 @@ export class ProgressService {
       kind,
       weekStartsAt: kind === "weekly" ? weekStart(key).toISOString() : null,
       weekEndsAt: kind === "weekly" ? weekStart(key + 1).toISOString() : null,
-      entries: rows.map((r, i) => ({ ...tags.get(r.userId)!, rank: i + 1, profit: r.profit, isMe: r.userId === viewerId })),
-      lastPlace: last ? { ...tags.get(last.userId)!, profit: last.profit, isMe: last.userId === viewerId } : null,
+      entries: rows.map((r, i) => ({
+        ...tags.get(r.userId)!,
+        userId: r.userId,
+        rank: i + 1,
+        profit: r.profit,
+        isMe: r.userId === viewerId,
+      })),
+      lastPlace: last
+        ? { ...tags.get(last.userId)!, userId: last.userId, profit: last.profit, isMe: last.userId === viewerId }
+        : null,
       me: viewerId ? await this.rank(kind, viewerId) : null,
     };
   }
@@ -233,6 +242,27 @@ export class ProgressService {
         nextClaim: claimTerms(row.isAnonymous ? null : allTime.rank),
         nextDailyClaimAt: next,
       },
+    };
+  }
+
+  /** A registered, active player's public card. Guests and suspended players are not visible. */
+  async publicProfile(userId: string): Promise<PublicProfileDTO | null> {
+    const [u] = await this.db
+      .select({ ok: sql<boolean>`true` })
+      .from(users)
+      .where(and(eq(users.id, userId), this.eligible()));
+    if (!u) return null;
+    const p = await this.profile(userId);
+    return {
+      user: {
+        id: p.user.id,
+        name: p.user.name,
+        title: p.user.title,
+        nameColour: p.user.nameColour,
+        hallOfFame: p.user.hallOfFame,
+        joinedAt: p.user.joinedAt,
+      },
+      stats: p.stats,
     };
   }
 }

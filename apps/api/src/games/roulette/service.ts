@@ -3,6 +3,7 @@ import {
   ROULETTE_BETS,
   ROULETTE_LIMITS,
   isWheelId,
+  rouletteRoom,
   type RouletteMyBetsDTO,
   type RouletteRoundDTO,
   type RouletteWheelDTO,
@@ -11,6 +12,7 @@ import {
 import type { Db, DbOrTx } from "../../db/client";
 import { rouletteBets, rouletteRounds } from "../../db/schema";
 import type { Bus } from "../../realtime/bus";
+import type { LiveBusMessage } from "../../realtime/messages";
 import type { WalletService } from "../../wallet/wallet-service";
 import { GameError } from "../errors";
 
@@ -34,13 +36,6 @@ export function roundDTO(row: RoundRow): RouletteRoundDTO {
     serverSeed: settled ? row.serverSeed : null,
   };
 }
-
-/** Messages carried on the bus; the socket hub routes them. */
-export type RouletteBusMessage =
-  | { kind: "wheel"; wheelId: WheelId; message: unknown }
-  | { kind: "user"; userId: string; message: unknown }
-  /** Someone started watching a wheel: the dealer should check it now. */
-  | { kind: "wake"; wheelId: WheelId };
 
 export class RouletteService {
   constructor(
@@ -187,9 +182,9 @@ export class RouletteService {
 
   private async publishActivity(wheelId: WheelId, roundId: string) {
     const act = await this.activity(this.db, roundId);
-    const msg: RouletteBusMessage = {
-      kind: "wheel",
-      wheelId,
+    const msg: LiveBusMessage = {
+      kind: "room",
+      room: rouletteRoom(wheelId),
       message: { type: "activity", wheelId, roundId, ...act },
     };
     await this.bus.publish(msg);

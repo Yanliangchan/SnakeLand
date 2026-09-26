@@ -3,6 +3,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useMemo } from "react";
 import { WIDTH, bucketLabel, geometry } from "./geometry";
+import { useSettings } from "@/providers/settings";
 
 export interface Ball {
   id: string;
@@ -19,6 +20,7 @@ function bucketTone(x100: number, max: number) {
 }
 
 function BallView({ ball, rows, onLand }: { ball: Ball; rows: number; onLand: (id: string) => void }) {
+  const { speed } = useSettings();
   const g = useMemo(() => geometry(rows), [rows]);
   const { xs, ys } = useMemo(() => g.path(ball.path), [g, ball.path]);
   const n = xs.length - 1;
@@ -36,7 +38,7 @@ function BallView({ ball, rows, onLand }: { ball: Ball; rows: number; onLand: (i
       initial={{ cx: xs[0], cy: ys[0], opacity: 0 }}
       animate={{ cx: xs, cy: ys, opacity: 1 }}
       exit={{ opacity: 0, transition: { duration: 0.15 } }}
-      transition={{ duration: 0.55 + rows * 0.14, times, ease, opacity: { duration: 0.1 } }}
+      transition={{ duration: (0.55 + rows * 0.14) * speed, times, ease, opacity: { duration: 0.1 } }}
       onAnimationComplete={() => onLand(ball.id)}
       style={{ filter: "drop-shadow(0 0 6px rgba(255,255,255,0.35))" }}
     />

@@ -6,6 +6,7 @@ import {
   INSTANT_BET_LIMITS,
   MINES_DEFAULT_SIZE,
   MINES_SIZES,
+  minesMultiplierX100,
   minesRange,
   minesTiles,
   applyX100,
@@ -21,6 +22,7 @@ import { ApiError } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { minesApi } from "@/lib/instant-api";
 import { fade, fadeUp, tap, tapTransition } from "@/lib/motion";
+import { recordRound } from "@/lib/session-stats";
 import { useSession } from "@/providers/session";
 import { useSettings } from "@/providers/settings";
 import { ChipTray, StakeSummary, useChipSlip } from "../shared/ChipSlip";
@@ -33,10 +35,16 @@ import { Tile, type TileState } from "./Tile";
 const presetsFor = (tiles: number) =>
   [...new Set([1, 3, Math.round(tiles / 4), Math.round(tiles / 2), tiles - 1])].filter((n) => n >= 1 && n < tiles);
 
-function tileStates(round: MinesRoundDTO | null, tiles: number): TileState[] {
+/**
+ * Tile states for the board. `replayStep` (replay mode) shows only the first
+ * n picks, then the bust, then the full reveal.
+ */
+function tileStates(round: MinesRoundDTO | null, tiles: number, replayStep: number | null = null): TileState[] {
   const states: TileState[] = Array(tiles).fill("hidden");
   if (!round) return states;
-  for (const t of round.picks) states[t] = "gem";
+  const picks = replayStep === null ? round.picks : round.picks.slice(0, replayStep);
+  for (const t of picks) states[t] = "gem";
+  if (replayStep !== null && replayStep <= round.picks.length) return states;
   if (round.status !== "playing" && round.minePositions) {
     const mines = new Set(round.minePositions);
     for (let t = 0; t < tiles; t++) {
@@ -126,7 +134,8 @@ function SizePicker({ value, onChange, disabled }: { value: number; onChange: (v
 
 export function MinesGame() {
   const { me, setWallet } = useSession();
-  const { play } = useSettings();
+  const { play, speed } = useSettings();
+  const [replay, setReplay] = useState<{ roundId: string; step: number } | null>(null);
   const clientSeed = useClientSeed();
   const balance = me?.wallet.balance ?? 0;
   const slip = useChipSlip(Math.min(INSTANT_BET_LIMITS.max, balance));
@@ -181,6 +190,7 @@ export function MinesGame() {
     setNextCommit(u.nextCommit);
     if (u.balance !== null) setWallet({ balance: u.balance });
     if (u.round.status !== "playing") {
+      recordRound("mines", u.round.bet, u.round.payout ?? 0);
       const x100 = u.round.status === "bust" ? 0 : u.round.multiplierX100;
       setRecent((r) => [{ id: u.round.id, x100 }, ...r].slice(0, 12));
       if (u.round.reveal && u.round.minePositions) {
@@ -250,15 +260,38 @@ export function MinesGame() {
       }
     };
   });
+  // Replay: one pick every ~350ms, then the bust and the full board.
+  const replayingId = replay?.roundId;
+  useEffect(() => {
+    if (!replayingId) return;
+    const total = round?.picks.length ?? 0;
+    const t = setInterval(() => {
+      setReplay((r) => (!r || r.step > total ? null : { ...r, step: r.step + 1 }));
+      play("flip");
+    }, 350 * speed);
+    return () => clearInterval(t);
+    // Restart only when a new replay begins.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [replayingId]);
+
   useEffect(() => {
     const l = (e: KeyboardEvent) => keys.current(e);
     window.addEventListener("keydown", l);
     return () => window.removeEventListener("keydown", l);
   }, []);
 
-  const states = tileStates(round, tiles);
+  const replayStep = replay && round && replay.roundId === round.id ? replay.step : null;
+  const states = tileStates(round, tiles, replayStep);
   const cashValue = round ? applyX100(round.bet, round.multiplierX100) : 0;
   const ended = round && round.status !== "playing";
+  const safePicks = round?.picks.length ?? 0;
+  const nearX100 = round?.status === "bust" && safePicks > 0 ? minesMultiplierX100(tiles, round.mines, safePicks) : null;
+
+  const startReplay = () => {
+    if (!round || round.status === "playing") return;
+    setReplay({ roundId: round.id, step: 0 });
+  };
+
   const outcomeOk = lastReveal
     ? JSON.stringify(minesPositions(lastReveal.reveal.serverSeed, lastReveal.reveal.clientSeed, lastReveal.tiles, lastReveal.mines)) ===
       JSON.stringify(lastReveal.positions)
@@ -267,6 +300,7 @@ export function MinesGame() {
   return (
     <>
       <GameShell
+        game="mines"
         title="Mines"
         tableId="mines"
         controls={
@@ -326,6 +360,15 @@ export function MinesGame() {
         >
           <div className="flex items-center justify-between gap-3">
             <RecentMultipliers items={recent} />
+            {ended && (
+              <button
+                onClick={startReplay}
+                disabled={replayStep !== null}
+                className="ml-auto shrink-0 rounded-full px-3 py-1 text-[12px] text-fg-muted transition-colors hairline hover:text-fg disabled:opacity-40"
+              >
+                {replayStep !== null ? "Replaying…" : "Replay"}
+              </button>
+            )}
             <button
               onClick={() => setFairOpen(true)}
               className="shrink-0 rounded-full px-3 py-1 text-[12px] text-fg-muted transition-colors hairline hover:text-fg"
@@ -360,11 +403,21 @@ export function MinesGame() {
             </div>
             <AnimatePresence mode="wait">
               {ended && (
-                <motion.p key={round.id} {...fade} className={cn("text-[15px] font-medium tabular", round.status === "bust" ? "text-loss" : "text-win")}>
-                  {round.status === "bust"
-                    ? `−${round.bet.toLocaleString()}`
-                    : `+${((round.payout ?? 0) - round.bet).toLocaleString()}`}
-                </motion.p>
+                <motion.div key={round.id} {...fade} className="text-right">
+                  <p className={cn("text-[15px] font-medium tabular", round.status === "bust" ? "text-loss" : "text-win")}>
+                    {round.status === "bust"
+                      ? `−${round.bet.toLocaleString()}`
+                      : `+${((round.payout ?? 0) - round.bet).toLocaleString()}`}
+                  </p>
+                  {/* Near miss: what cashing out before the fatal pick would have paid. */}
+                  {round.status === "bust" && (
+                    <p className="mt-0.5 text-[12px] text-fg-muted tabular">
+                      {nearX100
+                        ? `One pick earlier: ${formatX100(nearX100)} · +${(applyX100(round.bet, nearX100) - round.bet).toLocaleString()}`
+                        : `First pick: ${Math.round((round.mines / tiles) * 100)}% were mines`}
+                    </p>
+                  )}
+                </motion.div>
               )}
               {playing && round.picks.length > 0 && (
                 <motion.p key="profit" {...fade} className="text-[15px] font-medium text-fg-muted tabular">
@@ -383,7 +436,11 @@ export function MinesGame() {
                 disabled={!playing || pending}
                 onPick={pick}
                 // Stagger the end-of-round reveal outward from the last tile opened.
-                delay={ended && !round.picks.includes(i) && i !== round.bustTile ? 0.15 + (i % boardSize) * 0.02 + Math.floor(i / boardSize) * 0.02 : 0}
+                delay={
+                  ended && replayStep === null && !round.picks.includes(i) && i !== round.bustTile
+                    ? (0.15 + (i % boardSize) * 0.02 + Math.floor(i / boardSize) * 0.02) * speed
+                    : 0
+                }
               />
             ))}
           </div>

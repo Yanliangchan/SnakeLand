@@ -57,10 +57,10 @@ export const GAMES: Record<GameId, GameMeta> = {
   crash: {
     id: "crash",
     name: "Crash",
-    tagline: "Cash out before it crashes.",
+    tagline: "Ride the snake. Cash out before it bites.",
     kind: "live",
     usesTables: false,
-    available: false,
+    available: true,
   },
 };
 

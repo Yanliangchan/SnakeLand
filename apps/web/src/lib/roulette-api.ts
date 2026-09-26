@@ -8,8 +8,9 @@ import type {
   RouletteWheelDTO,
   WheelId,
 } from "@snakeland/shared";
+import { rouletteRoom } from "@snakeland/shared";
 import { api } from "./api";
-import { WS_URL } from "./config";
+import { useLiveSocket } from "./live-socket";
 
 export const rouletteApi = {
   state: (wheelId: WheelId) =>
@@ -23,97 +24,37 @@ export const rouletteApi = {
     api<{ myBets: RouletteMyBetsDTO; balance: number }>("/v1/roulette/bets/clear", { method: "POST", body: input }),
 };
 
-/**
- * Live wheel feed. One socket per page; switching wheels just re-joins.
- * Reconnects with backoff, and tracks the server clock offset so countdowns
- * match the server's deadlines rather than this device's clock.
- */
+/** Live wheel feed over the shared live socket; switching wheels just re-joins. */
 export function useRouletteSocket(
   wheelId: WheelId,
   handlers: { onSettled: (s: RouletteSettlementDTO) => void; onState?: (w: RouletteWheelDTO) => void },
 ) {
   const [wheel, setWheel] = useState<RouletteWheelDTO | null>(null);
-  const [connected, setConnected] = useState(false);
-  const offsetMs = useRef(0);
-  const socket = useRef<WebSocket | null>(null);
   const wheelRef = useRef(wheelId);
   const handlersRef = useRef(handlers);
 
   useEffect(() => {
     handlersRef.current = handlers;
+    wheelRef.current = wheelId;
   });
 
-  useEffect(() => {
-    wheelRef.current = wheelId;
-    const ws = socket.current;
-    if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "join", wheelId }));
-  }, [wheelId]);
-
-  useEffect(() => {
-    let stopped = false;
-    let retry = 0;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    let pinger: ReturnType<typeof setInterval> | undefined;
-
-    const connect = async () => {
-      // A fresh single-use ticket per connection (fetched same-origin with the session cookie).
-      let ticket: string;
-      try {
-        ticket = (await api<{ ticket: string }>("/v1/roulette/ws-ticket", { method: "POST", body: {} })).ticket;
-      } catch {
-        if (stopped) return;
-        retry = Math.min(retry + 1, 5);
-        timer = setTimeout(() => void connect(), 500 * 2 ** retry);
-        return;
+  const { connected, offsetMs } = useLiveSocket(rouletteRoom(wheelId), (raw) => {
+    const msg = raw as unknown as RouletteServerMessage;
+    if (msg.type === "state") {
+      if (msg.wheel.wheelId === wheelRef.current) {
+        setWheel(msg.wheel);
+        handlersRef.current.onState?.(msg.wheel);
       }
-      if (stopped) return;
-      const ws = new WebSocket(`${WS_URL}/v1/roulette/ws?ticket=${encodeURIComponent(ticket)}`);
-      socket.current = ws;
-      ws.onopen = () => {
-        retry = 0;
-        setConnected(true);
-        ws.send(JSON.stringify({ type: "join", wheelId: wheelRef.current }));
-        pinger = setInterval(() => ws.readyState === WebSocket.OPEN && ws.send(JSON.stringify({ type: "ping" })), 20_000);
-      };
-      ws.onmessage = (event) => {
-        let msg: RouletteServerMessage;
-        try {
-          msg = JSON.parse(String(event.data)) as RouletteServerMessage;
-        } catch {
-          return;
-        }
-        if (msg.type === "state") {
-          offsetMs.current = new Date(msg.serverNow).getTime() - Date.now();
-          if (msg.wheel.wheelId === wheelRef.current) {
-            setWheel(msg.wheel);
-            handlersRef.current.onState?.(msg.wheel);
-          }
-        } else if (msg.type === "activity") {
-          setWheel((w) =>
-            w && w.wheelId === msg.wheelId && w.round?.id === msg.roundId
-              ? { ...w, players: msg.players, totalStaked: msg.totalStaked }
-              : w,
-          );
-        } else if (msg.type === "settled") {
-          handlersRef.current.onSettled(msg.settlement);
-        }
-      };
-      ws.onclose = () => {
-        clearInterval(pinger);
-        setConnected(false);
-        if (stopped) return;
-        retry = Math.min(retry + 1, 5);
-        timer = setTimeout(() => void connect(), 500 * 2 ** retry);
-      };
-    };
-    void connect();
-    return () => {
-      stopped = true;
-      clearTimeout(timer);
-      clearInterval(pinger);
-      socket.current?.close();
-    };
-  }, []);
+    } else if (msg.type === "activity") {
+      setWheel((w) =>
+        w && w.wheelId === msg.wheelId && w.round?.id === msg.roundId
+          ? { ...w, players: msg.players, totalStaked: msg.totalStaked }
+          : w,
+      );
+    } else if (msg.type === "settled") {
+      handlersRef.current.onSettled(msg.settlement);
+    }
+  });
 
   return { wheel: wheel?.wheelId === wheelId ? wheel : null, connected, offsetMs };
 }
