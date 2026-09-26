@@ -18,6 +18,7 @@ const LABEL: Record<TransactionType, string> = {
   payout: "Payout",
   refund: "Refund",
   guest_merge: "Carried over from guest",
+  admin_adjust: "Adjustment",
 };
 
 const timeFmt = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });

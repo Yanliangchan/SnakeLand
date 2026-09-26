@@ -3,9 +3,6 @@ import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
 import {
   INSTANT_BET_LIMITS,
-  MINES_MAX,
-  MINES_MIN,
-  MINES_TILES,
   PLINKO_RISKS,
   PLINKO_ROWS_MAX,
   PLINKO_ROWS_MIN,
@@ -33,7 +30,17 @@ export async function instantRoutes(
 
   r.post(
     "/v1/mines/rounds",
-    { schema: { body: z.object({ bet, mines: z.number().int().min(MINES_MIN).max(MINES_MAX), clientSeed }) } },
+    {
+      schema: {
+        body: z.object({
+          bet,
+          size: z.number().int().min(3).max(8).optional(),
+          // The exact upper bound depends on the board; the service checks it.
+          mines: z.number().int().min(1).max(63),
+          clientSeed,
+        }),
+      },
+    },
     async (request) => opts.mines.start(request.user!.id, request.body),
   );
 
@@ -42,7 +49,7 @@ export async function instantRoutes(
     {
       schema: {
         params: roundParams,
-        body: z.object({ tile: z.number().int().min(0).max(MINES_TILES - 1), version }),
+        body: z.object({ tile: z.number().int().min(0).max(63), version }),
       },
     },
     async (request) => opts.mines.reveal(request.user!.id, request.params.roundId, request.body),

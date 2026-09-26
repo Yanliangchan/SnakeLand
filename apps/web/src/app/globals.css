@@ -24,6 +24,11 @@
   --color-table-black: #141414;
   --color-table-green: #1b8f4e;
 
+  /* Rank decorations: titles, podium, gold names. */
+  --color-gold: #d4af37;
+  --color-silver: #c0c0c0;
+  --color-bronze: #b0764a;
+
   --font-sans: "Inter Variable", "SF Pro Text", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
 
   --radius-ui: 12px;

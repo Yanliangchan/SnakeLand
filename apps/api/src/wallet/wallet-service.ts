@@ -1,7 +1,7 @@
 import { and, desc, eq, lt, or, sql } from "drizzle-orm";
 import {
   DAILY_CLAIM_AMOUNT,
-  DAILY_CLAIM_COOLDOWN_MS,
+  DAILY_COOLDOWN_HOURS,
   MAX_BALANCE,
   STARTING_BALANCE,
   isChipAmount,
@@ -11,7 +11,17 @@ import {
   type TransactionPageDTO,
   type TransactionType,
   type WalletDTO,
+  weekKey,
 } from "@snakeland/shared";
+
+/** Ledger types that count as play (profit, wagered, biggest win). */
+const PLAY_TYPES = new Set<TransactionType>(["bet", "payout", "refund"]);
+
+export interface ClaimOptions {
+  amount: number;
+  cooldownHours: number;
+  reasons?: string[];
+}
 import type { Db, DbOrTx, Tx } from "../db/client";
 import { transactions, wallets } from "../db/schema";
 import { WalletError } from "./errors";
@@ -52,10 +62,8 @@ function toDTO(row: TransactionRow): TransactionDTO {
   };
 }
 
-function nextClaimAt(wallet: Pick<WalletRow, "lastDailyClaimAt">, now: Date): Date | null {
-  if (!wallet.lastDailyClaimAt) return null;
-  const next = new Date(wallet.lastDailyClaimAt.getTime() + DAILY_CLAIM_COOLDOWN_MS);
-  return next > now ? next : null;
+function nextClaimAt(wallet: Pick<WalletRow, "nextDailyClaimAt">, now: Date): Date | null {
+  return wallet.nextDailyClaimAt && wallet.nextDailyClaimAt > now ? wallet.nextDailyClaimAt : null;
 }
 
 /**
@@ -141,7 +149,10 @@ export class WalletService {
         throw new WalletError("BALANCE_LIMIT", "Balance limit reached");
       }
 
-      await t.update(wallets).set({ balance: balanceAfter }).where(eq(wallets.userId, input.userId));
+      await t
+        .update(wallets)
+        .set({ balance: balanceAfter, ...this.counterUpdates(wallet, input.type, input.amount) })
+        .where(eq(wallets.userId, input.userId));
       const [row] = await t
         .insert(transactions)
         .values({
@@ -160,7 +171,29 @@ export class WalletService {
     });
   }
 
-  async claimDaily(userId: string): Promise<ApplyResult & { nextDailyClaimAt: string }> {
+  /** Keep the leaderboard counters in step with every play transaction. */
+  private counterUpdates(wallet: WalletRow, type: TransactionType, amount: number) {
+    if (!PLAY_TYPES.has(type)) return {};
+    const key = weekKey(this.clock());
+    const sameWeek = wallet.weekKey === key;
+    return {
+      lifetimeProfit: wallet.lifetimeProfit + amount,
+      // A new week rolls the old figure into prev_* (the daily snapshot may still need it).
+      weekKey: key,
+      weekProfit: (sameWeek ? wallet.weekProfit : 0) + amount,
+      ...(sameWeek ? {} : { prevWeekKey: wallet.weekKey, prevWeekProfit: wallet.weekProfit }),
+      totalWagered: wallet.totalWagered + (type === "bet" ? -amount : 0),
+      biggestWin: type === "payout" ? Math.max(wallet.biggestWin, amount) : wallet.biggestWin,
+    };
+  }
+
+  /**
+   * Daily free chips. `options` carries perk-adjusted terms (amount and
+   * cooldown); without it the standard claim applies.
+   */
+  async claimDaily(userId: string, options?: ClaimOptions): Promise<ApplyResult & { nextDailyClaimAt: string }> {
+    const amount = options?.amount ?? DAILY_CLAIM_AMOUNT;
+    const cooldownMs = (options?.cooldownHours ?? DAILY_COOLDOWN_HOURS) * 3_600_000;
     return this.db.transaction(async (tx) => {
       const wallet = await this.lock(tx, userId);
       const now = this.clock();
@@ -170,12 +203,41 @@ export class WalletService {
           nextDailyClaimAt: blockedUntil.toISOString(),
         });
       }
-      await tx.update(wallets).set({ lastDailyClaimAt: now }).where(eq(wallets.userId, userId));
-      const result = await this.apply({ userId, amount: DAILY_CLAIM_AMOUNT, type: "daily_claim" }, tx);
-      return {
-        ...result,
-        nextDailyClaimAt: new Date(now.getTime() + DAILY_CLAIM_COOLDOWN_MS).toISOString(),
-      };
+      const next = new Date(now.getTime() + cooldownMs);
+      await tx.update(wallets).set({ lastDailyClaimAt: now, nextDailyClaimAt: next }).where(eq(wallets.userId, userId));
+      const result = await this.apply(
+        { userId, amount, type: "daily_claim", meta: options?.reasons?.length ? { perks: options.reasons } : undefined },
+        tx,
+      );
+      return { ...result, nextDailyClaimAt: next.toISOString() };
+    });
+  }
+
+  /**
+   * Admin balance change: `adjust` adds a signed delta, `set` moves the balance
+   * to an exact figure. Either way it is one admin_adjust ledger row, so the
+   * ledger still sums to the balance. Admin credits don't count as profit.
+   */
+  async adminAdjust(
+    userId: string,
+    input: { mode: "adjust" | "set"; amount: number },
+    meta: Record<string, unknown>,
+  ): Promise<ApplyResult> {
+    return this.db.transaction(async (tx) => {
+      const wallet = await this.lock(tx, userId);
+      const delta = input.mode === "set" ? input.amount - wallet.balance : input.amount;
+      if (delta === 0) {
+        throw new WalletError("INVALID_AMOUNT", "That wouldn't change the balance");
+      }
+      return this.apply({ userId, amount: delta, type: "admin_adjust", meta }, tx);
+    });
+  }
+
+  /** Let the player claim their daily chips again right away. */
+  async resetDailyClaim(userId: string): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      await this.lock(tx, userId);
+      await tx.update(wallets).set({ nextDailyClaimAt: null }).where(eq(wallets.userId, userId));
     });
   }
 
@@ -203,6 +265,15 @@ export class WalletService {
         balance: amount,
         // Carry the cooldown so a guest can't claim, register, and claim again.
         lastDailyClaimAt: guest.lastDailyClaimAt,
+        nextDailyClaimAt: guest.nextDailyClaimAt,
+        // Their play history counts towards the new account.
+        lifetimeProfit: guest.lifetimeProfit,
+        weekKey: guest.weekKey,
+        weekProfit: guest.weekProfit,
+        prevWeekKey: guest.prevWeekKey,
+        prevWeekProfit: guest.prevWeekProfit,
+        totalWagered: guest.totalWagered,
+        biggestWin: guest.biggestWin,
       });
       await tx.update(wallets).set({ balance: 0 }).where(eq(wallets.userId, guestUserId));
 

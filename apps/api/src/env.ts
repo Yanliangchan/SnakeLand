@@ -39,6 +39,14 @@ const EnvSchema = z.object({
     .optional(),
   /** Number of trusted X-Forwarded-For hops in front of the API (ignored with CLIENT_IP_HEADER). */
   TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(5).default(0),
+  /**
+   * scrypt hash of the /admin password (`pnpm --filter @snakeland/api admin:hash`).
+   * Unset disables the admin console.
+   */
+  ADMIN_PASSWORD_HASH: z
+    .string()
+    .regex(/^scrypt\$[A-Za-z0-9+/=]+\$[A-Za-z0-9+/=]+$/, "ADMIN_PASSWORD_HASH must come from the admin:hash script")
+    .optional(),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

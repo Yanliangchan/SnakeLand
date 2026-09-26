@@ -27,8 +27,9 @@ const plinko = new PlinkoService(db, wallet, seeds);
 /** Test-only peek at the secret layout, to choose safe or mined tiles on purpose. */
 async function layout(roundId: string) {
   const [row] = await db.select().from(minesRounds).where(eq(minesRounds.id, roundId));
-  const m = new Set(minesPositions(row!.serverSeed, row!.clientSeed, row!.mines));
-  const all = Array.from({ length: 25 }, (_, i) => i);
+  const tiles = row!.size * row!.size;
+  const m = new Set(minesPositions(row!.serverSeed, row!.clientSeed, tiles, row!.mines));
+  const all = Array.from({ length: tiles }, (_, i) => i);
   return { mined: all.filter((t) => m.has(t)), safe: all.filter((t) => !m.has(t)) };
 }
 
@@ -43,7 +44,7 @@ describe("Mines", () => {
     expect(u.round.minePositions).toBeNull();
     expect(u.round.reveal).toBeNull();
     expect(JSON.stringify(u)).not.toMatch(/serverSeed/);
-    expect(u.round.nextMultiplierX100).toBe(minesMultiplierX100(3, 1));
+    expect(u.round.nextMultiplierX100).toBe(minesMultiplierX100(25, 3, 1));
   });
 
   it("pays floor(bet × multiplier) on cash-out and reveals a verifiable layout", async () => {
@@ -54,9 +55,9 @@ describe("Mines", () => {
       u = await mines.reveal(userId, u.round.id, { tile, version: u.round.version });
       expect(u.round.status).toBe("playing");
     }
-    expect(u.round.multiplierX100).toBe(minesMultiplierX100(5, 4));
+    expect(u.round.multiplierX100).toBe(minesMultiplierX100(25, 5, 4));
     u = await mines.cashOut(userId, u.round.id, { version: u.round.version });
-    const payout = applyX100(150, minesMultiplierX100(5, 4));
+    const payout = applyX100(150, minesMultiplierX100(25, 5, 4));
     expect(u.round.status).toBe("cashed_out");
     expect(u.round.payout).toBe(payout);
     expect(u.balance).toBe(STARTING_BALANCE - 150 + payout);
@@ -64,7 +65,7 @@ describe("Mines", () => {
 
     const r = u.round.reveal!;
     expect(verifyCommit(r.serverSeed, r.commit)).toBe(true);
-    expect(minesPositions(r.serverSeed, r.clientSeed, 5)).toEqual(u.round.minePositions);
+    expect(minesPositions(r.serverSeed, r.clientSeed, 25, 5)).toEqual(u.round.minePositions);
   });
 
   it("busts on a mine with no payout", async () => {
@@ -89,7 +90,25 @@ describe("Mines", () => {
     const { safe } = await layout(u.round.id);
     u = await mines.reveal(userId, u.round.id, { tile: safe[0]!, version: u.round.version });
     expect(u.round.status).toBe("cashed_out");
-    expect(u.round.payout).toBe(applyX100(10, 2475));
+    expect(u.round.payout).toBe(applyX100(10, 2425));
+  });
+
+  it("plays any board size and validates mines against it", async () => {
+    const userId = await createUser(db);
+    await expect(mines.start(userId, { bet: 10, size: 9, mines: 3, clientSeed: "x" })).rejects.toMatchObject({ code: "INVALID_SIZE" });
+    await expect(mines.start(userId, { bet: 10, size: 3, mines: 9, clientSeed: "x" })).rejects.toMatchObject({ code: "INVALID_MINES" });
+    let u = await mines.start(userId, { bet: 10, size: 3, mines: 8, clientSeed: "tiny" });
+    expect(u.round.size).toBe(3);
+    const { safe } = await layout(u.round.id);
+    expect(safe).toHaveLength(1);
+    await expect(mines.reveal(userId, u.round.id, { tile: 9, version: u.round.version })).rejects.toMatchObject({ code: "INVALID_TILE" });
+    u = await mines.reveal(userId, u.round.id, { tile: safe[0]!, version: u.round.version });
+    expect(u.round.status).toBe("cashed_out");
+    expect(u.round.payout).toBe(applyX100(10, minesMultiplierX100(9, 8, 1)));
+
+    const big = await mines.start(userId, { bet: 10, size: 8, mines: 40, clientSeed: "big" });
+    expect(big.round.nextMultiplierX100).toBe(minesMultiplierX100(64, 40, 1));
+    expect((await layout(big.round.id)).mined).toHaveLength(40);
   });
 
   it("guards against misuse", async () => {

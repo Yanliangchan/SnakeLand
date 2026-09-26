@@ -69,9 +69,12 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signOut = useCallback(async () => {
-    await authClient.signOut();
-    setMe(null);
-    setLoadedFor(null);
+    try {
+      await authClient.signOut();
+    } finally {
+      setMe(null);
+      setLoadedFor(null);
+    }
   }, []);
 
   const value = useMemo(

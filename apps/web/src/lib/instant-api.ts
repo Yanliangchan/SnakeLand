@@ -8,7 +8,7 @@ import { api } from "./api";
 
 export const minesApi = {
   state: () => api<MinesStateDTO>("/v1/mines/state", { method: "POST", body: {} }),
-  start: (input: { bet: number; mines: number; clientSeed: string }) =>
+  start: (input: { bet: number; size: number; mines: number; clientSeed: string }) =>
     api<MinesUpdateDTO>("/v1/mines/rounds", { method: "POST", body: input }),
   reveal: (roundId: string, tile: number, version: number) =>
     api<MinesUpdateDTO>(`/v1/mines/rounds/${encodeURIComponent(roundId)}/reveal`, {

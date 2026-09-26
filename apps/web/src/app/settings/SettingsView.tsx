@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { AppHeader } from "@/components/AppHeader";
 import { Avatar, Button, ButtonLink, Card, Toggle } from "@/components/ui";
+import { api } from "@/lib/api";
 import { fadeUp } from "@/lib/motion";
 import { useSession } from "@/providers/session";
 import { useSettings } from "@/providers/settings";
@@ -58,14 +59,16 @@ export function SettingsView() {
             loading={signingOut}
             onClick={async () => {
               setSigningOut(true);
-              await signOut();
+              // A guest leaving is gone for good: delete it rather than leave it behind.
+              if (me.user.isGuest) await api("/v1/account/leave-guest", { method: "POST", body: {} }).catch(() => {});
+              await signOut().catch(() => {});
               router.replace("/");
             }}
           >
             {me.user.isGuest ? "Leave guest session" : "Sign out"}
           </Button>
           {me.user.isGuest && (
-            <p className="mt-3 text-[13px] text-fg-muted">Guest chips can’t be recovered after you leave.</p>
+            <p className="mt-3 text-[13px] text-fg-muted">Leaving deletes this guest and its chips for good.</p>
           )}
         </motion.div>
       </main>

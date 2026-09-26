@@ -25,18 +25,7 @@ export async function walletRoutes(app: FastifyInstance, opts: { auth: Auth; wal
 
   r.get("/v1/wallet", async (request) => opts.wallet.getWallet(request.user!.id));
 
-  r.post(
-    "/v1/wallet/daily-claim",
-    { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } },
-    async (request) => {
-      const result = await opts.wallet.claimDaily(request.user!.id);
-      return {
-        balance: result.balance,
-        nextDailyClaimAt: result.nextDailyClaimAt,
-        transaction: result.transaction,
-      };
-    },
-  );
+  // POST /v1/wallet/daily-claim lives in progress routes (perks change the amount).
 
   r.get(
     "/v1/wallet/transactions",

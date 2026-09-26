@@ -1,4 +1,4 @@
-import Fastify, { type FastifyError } from "fastify";
+import Fastify, { LogController, type FastifyError } from "fastify";
 import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
@@ -22,8 +22,16 @@ import { baccaratRoutes } from "./http/routes/baccarat";
 import { blackjackRoutes } from "./http/routes/blackjack";
 import { instantRoutes } from "./http/routes/instant";
 import { rouletteRoutes } from "./http/routes/roulette";
+import { adminRoutes } from "./http/routes/admin";
+import { progressRoutes } from "./http/routes/progress";
+import { MemoryAdminStore, RedisAdminStore } from "./admin/auth";
+import { AdminService } from "./admin/service";
+import { MaintenanceRunner } from "./maintenance/runner";
+import { PurgeService } from "./maintenance/purge";
+import { ProgressService } from "./progress/service";
 import { MemoryBus, RedisBus } from "./realtime/bus";
 import { AlwaysLeader, RedisLeadership } from "./realtime/leader";
+import { MemoryPresence, RedisPresence } from "./realtime/presence";
 import { RouletteHub } from "./realtime/roulette-hub";
 import { MemoryTicketStore, RedisTicketStore } from "./realtime/tickets";
 import { walletRoutes } from "./http/routes/wallet";
@@ -43,6 +51,8 @@ const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
 export async function buildApp({ env, db, redis }: { env: Env; db: Db; redis: Redis | null }) {
   const app = Fastify({
+    // Per-request logs are noise at our scale; errors are still logged.
+    logController: new LogController({ disableRequestLogging: env.NODE_ENV === "production" }),
     logger:
       env.NODE_ENV === "test"
         ? false
@@ -81,7 +91,8 @@ export async function buildApp({ env, db, redis }: { env: Env; db: Db; redis: Re
   app.removeContentTypeParser("text/plain");
 
   const wallet = new WalletService(db);
-  const auth = createAuth({ db, env, wallet });
+  const purge = new PurgeService(db);
+  const auth = createAuth({ db, env, wallet, purgeGuest: (id) => purge.purgeGuest(id) });
   const blackjack = new BlackjackService(db, wallet);
   const seeds = new FairSeedService(db);
   const mines = new MinesService(db, wallet, seeds);
@@ -91,11 +102,24 @@ export async function buildApp({ env, db, redis }: { env: Env; db: Db; redis: Re
   // Live games: Redis pub/sub + leader lease in production; in-process without Redis (tests).
   const bus = redis ? new RedisBus(redis, "snk:roulette") : new MemoryBus();
   const leadership = redis ? new RedisLeadership(redis, "snk:roulette:leader") : new AlwaysLeader();
+  const presence = redis ? new RedisPresence(redis) : new MemoryPresence();
   const roulette = new RouletteService(db, wallet, bus);
-  const dealer = new RouletteDealer(db, wallet, roulette, bus, leadership, app.log);
-  const hub = new RouletteHub(bus, roulette);
+  const dealer = new RouletteDealer(db, wallet, roulette, bus, leadership, presence, app.log);
+  const hub = new RouletteHub(bus, roulette, presence);
   const tickets = redis ? new RedisTicketStore(redis) : new MemoryTicketStore();
+
+  const progress = new ProgressService(db, wallet);
+  const maintenance = new MaintenanceRunner(
+    progress,
+    purge,
+    redis ? new RedisLeadership(redis, "snk:maint:leader", 60_000) : new AlwaysLeader(),
+    app.log,
+  );
+  const admin = new AdminService(db, wallet, progress);
+  const adminStore = redis ? new RedisAdminStore(redis) : new MemoryAdminStore();
+
   app.addHook("onClose", async () => {
+    await maintenance.stop();
     await dealer.stop();
     await hub.close();
     await bus.close();
@@ -181,6 +205,15 @@ export async function buildApp({ env, db, redis }: { env: Env; db: Db; redis: Re
   await app.register(instantRoutes, { auth, mines, plinko });
   await app.register(baccaratRoutes, { auth, baccarat });
   await app.register(rouletteRoutes, { auth, roulette, hub, tickets, webOrigins: env.WEB_ORIGINS });
+  await app.register(progressRoutes, { auth, progress, purge });
+  await app.register(adminRoutes, {
+    passwordHash: env.ADMIN_PASSWORD_HASH,
+    secureCookies: env.NODE_ENV === "production",
+    store: adminStore,
+    admin,
+    wallet,
+    purge,
+  });
 
-  return { app, auth, wallet, blackjack, mines, plinko, baccarat, roulette, dealer };
+  return { app, auth, wallet, blackjack, mines, plinko, baccarat, roulette, dealer, progress, purge, maintenance, admin, presence };
 }

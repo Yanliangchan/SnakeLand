@@ -8,7 +8,7 @@ export const BACCARAT_RULES = {
   reserve: 16,
   minBet: 10,
   /** Maximum total stake across all bets in one round. */
-  maxTotal: 5_000,
+  maxTotal: 10_000,
 } as const;
 
 export const BACCARAT_BETS = ["player", "banker", "tie", "playerPair", "bankerPair"] as const;

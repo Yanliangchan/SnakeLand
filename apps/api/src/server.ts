@@ -6,7 +6,7 @@ import { createRedis } from "./redis";
 const env = loadEnv();
 const { db, pool } = createDb(env.DATABASE_URL);
 const redis = createRedis(env.REDIS_URL);
-const { app, dealer } = await buildApp({ env, db, redis });
+const { app, dealer, maintenance } = await buildApp({ env, db, redis });
 
 let closing = false;
 async function shutdown(signal: string) {
@@ -34,3 +34,5 @@ try {
 }
 // Only the instance holding the Redis lease actually advances the wheels.
 dealer.start();
+// Housekeeping (top-5 snapshot, purges) also runs on a single lease holder.
+maintenance.start();

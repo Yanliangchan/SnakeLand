@@ -6,10 +6,10 @@
 export type Chips = number;
 
 /** Chips granted when a wallet is first created (registered or guest). */
-export const STARTING_BALANCE: Chips = 10_000;
+export const STARTING_BALANCE: Chips = 1_000;
 
 /** Chips granted by the daily free claim. */
-export const DAILY_CLAIM_AMOUNT: Chips = 5_000;
+export const DAILY_CLAIM_AMOUNT: Chips = 1_000;
 
 /** Rolling cooldown between daily claims. */
 export const DAILY_CLAIM_COOLDOWN_MS = 24 * 60 * 60 * 1000;
@@ -24,6 +24,7 @@ export const TRANSACTION_TYPES = [
   "payout",
   "refund",
   "guest_merge",
+  "admin_adjust",
 ] as const;
 export type TransactionType = (typeof TRANSACTION_TYPES)[number];
 

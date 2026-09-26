@@ -1,9 +1,10 @@
 import { and, eq } from "drizzle-orm";
 import {
   INSTANT_BET_LIMITS,
-  MINES_MAX,
-  MINES_MIN,
-  MINES_TILES,
+  MINES_DEFAULT_SIZE,
+  isMinesSize,
+  minesRange,
+  minesTiles,
   applyX100,
   minesMultiplierX100,
   minesPositions,
@@ -22,19 +23,21 @@ type Row = typeof minesRounds.$inferSelect;
 /** Client view. Mine positions and the server seed are withheld until the round is over. */
 function toDTO(row: Row): MinesRoundDTO {
   const over = row.status !== "playing";
-  const safeLeft = MINES_TILES - row.mines - row.picks.length;
+  const tiles = minesTiles(row.size);
+  const safeLeft = tiles - row.mines - row.picks.length;
   return {
     id: row.id,
     version: row.version,
     status: row.status,
     bet: row.bet,
+    size: row.size,
     mines: row.mines,
     picks: row.picks,
     multiplierX100: row.multiplierX100,
-    nextMultiplierX100: !over && safeLeft > 0 ? minesMultiplierX100(row.mines, row.picks.length + 1) : null,
+    nextMultiplierX100: !over && safeLeft > 0 ? minesMultiplierX100(tiles, row.mines, row.picks.length + 1) : null,
     payout: row.payout,
     commit: row.serverSeedHash,
-    minePositions: over ? minesPositions(row.serverSeed, row.clientSeed, row.mines) : null,
+    minePositions: over ? minesPositions(row.serverSeed, row.clientSeed, tiles, row.mines) : null,
     bustTile: row.bustTile,
     reveal: over ? { commit: row.serverSeedHash, serverSeed: row.serverSeed, clientSeed: row.clientSeed } : null,
   };
@@ -55,13 +58,19 @@ export class MinesService {
     return { round: active ? toDTO(active) : null, nextCommit: await this.seeds.nextCommit(userId) };
   }
 
-  async start(userId: string, input: { bet: number; mines: number; clientSeed: string }): Promise<MinesUpdateDTO> {
+  async start(
+    userId: string,
+    input: { bet: number; size?: number; mines: number; clientSeed: string },
+  ): Promise<MinesUpdateDTO> {
+    const size = input.size ?? MINES_DEFAULT_SIZE;
+    if (!isMinesSize(size)) throw new GameError(400, "INVALID_SIZE", "Choose a board from 3×3 to 8×8");
+    const range = minesRange(minesTiles(size));
     const { min, max } = INSTANT_BET_LIMITS;
     if (!Number.isSafeInteger(input.bet) || input.bet < min || input.bet > max) {
       throw new GameError(400, "BET_OUT_OF_RANGE", `Bets are ${min}–${max.toLocaleString()} chips`);
     }
-    if (!Number.isInteger(input.mines) || input.mines < MINES_MIN || input.mines > MINES_MAX) {
-      throw new GameError(400, "INVALID_MINES", `Choose ${MINES_MIN}–${MINES_MAX} mines`);
+    if (!Number.isInteger(input.mines) || input.mines < range.min || input.mines > range.max) {
+      throw new GameError(400, "INVALID_MINES", `Choose ${range.min}–${range.max} mines on this board`);
     }
     if (!CLIENT_SEED_RE.test(input.clientSeed)) {
       throw new GameError(400, "INVALID_CLIENT_SEED", "Client seed must be 1–64 letters, digits, _ or -");
@@ -86,6 +95,7 @@ export class MinesService {
           id,
           userId,
           bet: input.bet,
+          size,
           mines: input.mines,
           serverSeed: seed.serverSeed,
           serverSeedHash: seed.commit,
@@ -109,14 +119,15 @@ export class MinesService {
   }
 
   async reveal(userId: string, roundId: string, input: { tile: number; version: number }): Promise<MinesUpdateDTO> {
-    if (!Number.isInteger(input.tile) || input.tile < 0 || input.tile >= MINES_TILES) {
-      throw new GameError(400, "INVALID_TILE", "Pick a tile on the board");
-    }
     return this.db.transaction(async (tx) => {
       const row = await this.lockRound(tx, userId, roundId, input.version);
+      const tiles = minesTiles(row.size);
+      if (!Number.isInteger(input.tile) || input.tile < 0 || input.tile >= tiles) {
+        throw new GameError(400, "INVALID_TILE", "Pick a tile on the board");
+      }
       if (row.picks.includes(input.tile)) throw new GameError(400, "TILE_TAKEN", "That tile is already open");
 
-      const mines = new Set(minesPositions(row.serverSeed, row.clientSeed, row.mines));
+      const mines = new Set(minesPositions(row.serverSeed, row.clientSeed, tiles, row.mines));
       if (mines.has(input.tile)) {
         const [saved] = await tx
           .update(minesRounds)
@@ -127,7 +138,7 @@ export class MinesService {
       }
 
       const picks = [...row.picks, input.tile];
-      const multiplierX100 = minesMultiplierX100(row.mines, picks.length);
+      const multiplierX100 = minesMultiplierX100(tiles, row.mines, picks.length);
       const [saved] = await tx
         .update(minesRounds)
         .set({ picks, multiplierX100, version: row.version + 1 })
@@ -135,7 +146,7 @@ export class MinesService {
         .returning();
 
       // Every safe tile found: nothing left to risk, so cash out automatically.
-      if (picks.length === MINES_TILES - row.mines) return this.settle(tx, userId, saved!);
+      if (picks.length === tiles - row.mines) return this.settle(tx, userId, saved!);
       return { round: toDTO(saved!), balance: null, nextCommit: await this.seeds.nextCommit(userId, tx) };
     });
   }

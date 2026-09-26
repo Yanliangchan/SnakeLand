@@ -2,6 +2,7 @@ import { betterAuth } from "better-auth";
 import { APIError } from "better-auth/api";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { anonymous } from "better-auth/plugins";
+import { eq } from "drizzle-orm";
 import type { Db } from "./db/client";
 import { accounts, rateLimits, sessions, users, verifications } from "./db/schema";
 import type { Env } from "./env";
@@ -27,7 +28,18 @@ function guestName(): string {
   return `Guest ${Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("").toUpperCase()}`;
 }
 
-export function createAuth({ db, env, wallet }: { db: Db; env: Env; wallet: WalletService }) {
+export function createAuth({
+  db,
+  env,
+  wallet,
+  purgeGuest,
+}: {
+  db: Db;
+  env: Env;
+  wallet: WalletService;
+  /** Deletes the guest once its chips have moved to the new account. */
+  purgeGuest?: (guestUserId: string) => Promise<unknown>;
+}) {
   const isProd = env.NODE_ENV === "production";
 
   return betterAuth({
@@ -93,6 +105,19 @@ export function createAuth({ db, env, wallet }: { db: Db; env: Env; wallet: Wall
     },
 
     databaseHooks: {
+      session: {
+        create: {
+          // Suspended players can't sign in (the admin console also deletes their live sessions).
+          before: async (session) => {
+            const [u] = await db
+              .select({ suspendedAt: users.suspendedAt })
+              .from(users)
+              .where(eq(users.id, session.userId));
+            if (u?.suspendedAt) throw new APIError("FORBIDDEN", { message: "This account is suspended" });
+            return { data: session };
+          },
+        },
+      },
       user: {
         create: {
           before: async (user) => ({ data: { ...user, name: sanitizeDisplayName(user.name) } }),
@@ -108,11 +133,12 @@ export function createAuth({ db, env, wallet }: { db: Db; env: Env; wallet: Wall
       anonymous({
         emailDomainName: "guest.snakeland.invalid",
         generateName: () => guestName(),
-        // Keep the guest row: its ledger history references it and must stay intact.
+        // We delete the guest ourselves (with all its game rows) after the merge.
         disableDeleteAnonymousUser: true,
         onLinkAccount: async ({ anonymousUser, newUser, ctx }) => {
           try {
-            await wallet.mergeGuestWallet(anonymousUser.user.id, newUser.user.id);
+            const { merged } = await wallet.mergeGuestWallet(anonymousUser.user.id, newUser.user.id);
+            if (merged && purgeGuest) await purgeGuest(anonymousUser.user.id);
           } catch (error) {
             // Never block sign-up on the merge; the account simply starts fresh.
             ctx.context.logger.error("guest wallet merge failed", {

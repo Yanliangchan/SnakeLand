@@ -13,20 +13,32 @@ import type { Db } from "../../db/client";
 import { rouletteBets, rouletteRounds } from "../../db/schema";
 import type { Bus } from "../../realtime/bus";
 import type { Leadership } from "../../realtime/leader";
+import type { Presence, WheelCounts } from "../../realtime/presence";
 import type { WalletService } from "../../wallet/wallet-service";
 import type { RoundRow, RouletteBusMessage, RouletteService } from "./service";
 
 const TICK_MS = 200;
+const PRESENCE_REFRESH_MS = 2_000;
+
+/** Nothing to do for this wheel before `until` (ms), or until someone watches it (`idle`). */
+type Wait = { until: number } | { idle: true };
 
 /**
  * Drives every wheel through betting → spinning → result → next round.
- * Each tick reads the wheel's live round from Postgres and advances it if a
- * deadline has passed, so the loop holds no state of its own: if the leader
- * dies, another instance picks up exactly where it stopped.
+ * State lives in Postgres, so if the leader dies another instance picks up
+ * exactly where it stopped. To stay cheap, the dealer remembers each wheel's
+ * next deadline and skips the database until it passes, and a wheel nobody
+ * is watching finishes its current round and then sleeps until a viewer
+ * shows up (the hub publishes a "wake" message on join).
  */
 export class RouletteDealer {
   private timer: NodeJS.Timeout | null = null;
   private ticking = false;
+  private wasLeader = false;
+  private waits = new Map<WheelId, Wait>();
+  private viewers: WheelCounts | null = null;
+  private viewersAt = 0;
+  private readonly unsubscribe: () => void;
 
   constructor(
     private readonly db: Db,
@@ -34,8 +46,16 @@ export class RouletteDealer {
     private readonly roulette: RouletteService,
     private readonly bus: Bus,
     private readonly leadership: Leadership,
+    private readonly presence: Presence,
     private readonly log: { error: (obj: unknown, msg?: string) => void } = console,
-  ) {}
+  ) {
+    this.unsubscribe = bus.subscribe((m) => {
+      const msg = m as RouletteBusMessage;
+      if (msg.kind !== "wake") return;
+      this.waits.delete(msg.wheelId);
+      this.viewersAt = 0;
+    });
+  }
 
   start() {
     if (this.timer) return;
@@ -45,7 +65,16 @@ export class RouletteDealer {
   async stop() {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
+    this.unsubscribe();
     await this.leadership.release();
+  }
+
+  private async viewerCounts(): Promise<WheelCounts> {
+    if (!this.viewers || Date.now() - this.viewersAt >= PRESENCE_REFRESH_MS) {
+      this.viewers = await this.presence.totals();
+      this.viewersAt = Date.now();
+    }
+    return this.viewers;
   }
 
   /** Advance every wheel whose deadline has passed. Safe to call concurrently or from tests. */
@@ -53,10 +82,19 @@ export class RouletteDealer {
     if (this.ticking) return;
     this.ticking = true;
     try {
-      if (!(await this.leadership.isLeader())) return;
+      const leader = await this.leadership.isLeader();
+      // Another instance may have moved the wheels while we weren't leading.
+      if (leader !== this.wasLeader) this.waits.clear();
+      this.wasLeader = leader;
+      if (!leader) return;
+      const viewers = await this.viewerCounts();
       for (const wheel of ROULETTE_WHEELS) {
+        const wait = this.waits.get(wheel.id);
+        if (wait && "until" in wait && now.getTime() < wait.until) continue;
+        if (wait && "idle" in wait && viewers[wheel.id] === 0) continue;
+        this.waits.delete(wheel.id);
         try {
-          await this.advance(wheel.id, wheel.offsetMs, now);
+          await this.advance(wheel.id, wheel.offsetMs, now, viewers[wheel.id] > 0);
         } catch (err) {
           this.log.error({ err, wheel: wheel.id }, "roulette tick failed");
         }
@@ -66,15 +104,24 @@ export class RouletteDealer {
     }
   }
 
-  private async advance(wheelId: WheelId, offsetMs: number, now: Date) {
+  private waitUntil(wheelId: WheelId, at: Date | null | undefined) {
+    if (at) this.waits.set(wheelId, { until: at.getTime() });
+  }
+
+  private async advance(wheelId: WheelId, offsetMs: number, now: Date, watched: boolean) {
     const [live] = await this.db
       .select()
       .from(rouletteRounds)
       .where(and(eq(rouletteRounds.wheelId, wheelId), ne(rouletteRounds.phase, "settled")));
 
-    if (live?.phase === "betting" && now >= live.closesAt) return this.close(live, now);
-    if (live?.phase === "spinning" && live.spinEndsAt && now >= live.spinEndsAt) return this.settle(live, now);
-    if (live) return;
+    if (live?.phase === "betting") {
+      if (now >= live.closesAt) return this.close(live, now);
+      return this.waitUntil(wheelId, live.closesAt);
+    }
+    if (live?.phase === "spinning") {
+      if (live.spinEndsAt && now >= live.spinEndsAt) return this.settle(live, now);
+      return this.waitUntil(wheelId, live.spinEndsAt);
+    }
 
     const [last] = await this.db
       .select()
@@ -82,7 +129,13 @@ export class RouletteDealer {
       .where(eq(rouletteRounds.wheelId, wheelId))
       .orderBy(desc(rouletteRounds.number))
       .limit(1);
-    if (last?.settledAt && now.getTime() < last.settledAt.getTime() + ROULETTE_TIMING.resultMs) return;
+    if (last?.settledAt && now.getTime() < last.settledAt.getTime() + ROULETTE_TIMING.resultMs) {
+      return this.waitUntil(wheelId, new Date(last.settledAt.getTime() + ROULETTE_TIMING.resultMs));
+    }
+    if (!watched) {
+      this.waits.set(wheelId, { idle: true });
+      return;
+    }
     // The very first round of each wheel is offset so the wheels run staggered.
     return this.open(wheelId, (last?.number ?? 0) + 1, now, last ? 0 : offsetMs);
   }
@@ -103,7 +156,9 @@ export class RouletteDealer {
       // The partial unique index makes a duplicate open (two leaders for a moment) a no-op.
       .onConflictDoNothing()
       .returning();
-    if (row) await this.publishState(wheelId);
+    if (!row) return;
+    this.waitUntil(wheelId, row.closesAt);
+    await this.publishState(wheelId);
   }
 
   private async close(round: RoundRow, now: Date) {
@@ -117,7 +172,9 @@ export class RouletteDealer {
       })
       .where(and(eq(rouletteRounds.id, round.id), eq(rouletteRounds.phase, "betting")))
       .returning();
-    if (row) await this.publishState(round.wheelId as WheelId);
+    if (!row) return;
+    this.waitUntil(row.wheelId as WheelId, row.spinEndsAt);
+    await this.publishState(round.wheelId as WheelId);
   }
 
   private async settle(round: RoundRow, now: Date) {
@@ -181,6 +238,7 @@ export class RouletteDealer {
       return out;
     });
     if (!settlements) return;
+    this.waitUntil(round.wheelId as WheelId, new Date(now.getTime() + ROULETTE_TIMING.resultMs));
 
     await this.publishState(round.wheelId as WheelId);
     for (const s of settlements) {

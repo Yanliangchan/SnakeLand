@@ -1,0 +1,32 @@
+import type {
+  AdminBalanceMode,
+  AdminPlayerDetailDTO,
+  AdminPlayerPageDTO,
+  AdminStatsDTO,
+} from "@snakeland/shared";
+import { api } from "./api";
+
+export type PlayerFilter = "all" | "players" | "guests" | "suspended";
+
+const p = (id: string) => `/v1/admin/players/${encodeURIComponent(id)}`;
+
+export const adminApi = {
+  session: () => api<{ ok: true }>("/v1/admin/session"),
+  login: (password: string) => api<{ ok: true }>("/v1/admin/login", { method: "POST", body: { password } }),
+  logout: () => api<{ ok: true }>("/v1/admin/logout", { method: "POST", body: {} }),
+  stats: () => api<AdminStatsDTO>("/v1/admin/stats"),
+  players: (q: { q?: string; filter: PlayerFilter; cursor?: string }) => {
+    const params = new URLSearchParams({ filter: q.filter, limit: "50" });
+    if (q.q) params.set("q", q.q);
+    if (q.cursor) params.set("cursor", q.cursor);
+    return api<AdminPlayerPageDTO>(`/v1/admin/players?${params}`);
+  },
+  player: (id: string) => api<AdminPlayerDetailDTO>(p(id)),
+  balance: (id: string, body: { mode: AdminBalanceMode; amount: number; note?: string }) =>
+    api<{ balance: number }>(`${p(id)}/balance`, { method: "POST", body }),
+  resetClaim: (id: string) => api(`${p(id)}/reset-claim`, { method: "POST", body: {} }),
+  rename: (id: string, name: string) => api<{ name: string }>(`${p(id)}/rename`, { method: "POST", body: { name } }),
+  suspend: (id: string, suspended: boolean) => api(`${p(id)}/suspend`, { method: "POST", body: { suspended } }),
+  signOut: (id: string) => api<{ sessions: number }>(`${p(id)}/sign-out`, { method: "POST", body: {} }),
+  deleteGuest: (id: string) => api(`${p(id)}/delete-guest`, { method: "POST", body: {} }),
+};

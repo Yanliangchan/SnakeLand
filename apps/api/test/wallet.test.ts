@@ -100,7 +100,7 @@ describe("WalletService", () => {
 
   it("carries a guest wallet into a brand-new account", async () => {
     const guestId = await createUser(db, { anonymous: true });
-    await wallet.apply(bet(guestId, 1234));
+    await wallet.apply(bet(guestId, 123));
     await wallet.claimDaily(guestId);
     const guestBalance = (await wallet.getWallet(guestId)).balance;
 

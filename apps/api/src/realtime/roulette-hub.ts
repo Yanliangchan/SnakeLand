@@ -3,6 +3,7 @@ import { z } from "zod";
 import { ROULETTE_WHEELS, type WheelId } from "@snakeland/shared";
 import type { RouletteBusMessage, RouletteService } from "../games/roulette/service";
 import type { Bus } from "./bus";
+import { emptyCounts, type Presence } from "./presence";
 
 const ClientMessage = z.discriminatedUnion("type", [
   z.object({ type: z.literal("join"), wheelId: z.enum(ROULETTE_WHEELS.map((w) => w.id) as [WheelId, ...WheelId[]]) }),
@@ -32,14 +33,29 @@ export class RouletteHub {
   private clients = new Set<Client>();
   private readonly unsubscribe: () => void;
   private readonly heartbeat: NodeJS.Timeout;
+  private readonly presenceTimer: NodeJS.Timeout;
 
   constructor(
-    bus: Bus,
+    private readonly bus: Bus,
     private readonly roulette: RouletteService,
+    private readonly presence: Presence,
   ) {
     this.unsubscribe = bus.subscribe((m) => this.route(m as RouletteBusMessage));
     this.heartbeat = setInterval(() => this.beat(), HEARTBEAT_MS);
     this.heartbeat.unref();
+    // Keep this instance's viewer counts fresh so the dealer knows which wheels to run.
+    this.presenceTimer = setInterval(() => void this.reportPresence(), 5_000);
+    this.presenceTimer.unref();
+  }
+
+  private counts() {
+    const out = emptyCounts();
+    for (const c of this.clients) if (c.wheelId) out[c.wheelId]++;
+    return out;
+  }
+
+  private reportPresence() {
+    return this.presence.report(this.counts());
   }
 
   private send(c: Client, message: unknown) {
@@ -79,7 +95,10 @@ export class RouletteHub {
     this.clients.add(client);
 
     socket.on("pong", () => (client.alive = true));
-    socket.on("close", () => this.clients.delete(client));
+    socket.on("close", () => {
+      this.clients.delete(client);
+      void this.reportPresence();
+    });
     socket.on("error", () => socket.terminate());
     socket.on("message", (raw, isBinary) => {
       const now = Date.now();
@@ -104,6 +123,8 @@ export class RouletteHub {
         return;
       }
       client.wheelId = parsed.wheelId;
+      // Report straight away and wake the dealer in case this wheel was asleep.
+      void this.reportPresence().then(() => this.bus.publish({ kind: "wake", wheelId: parsed.wheelId }));
       void this.roulette
         .wheelState(parsed.wheelId)
         .then((wheel) => client.wheelId === parsed.wheelId && this.send(client, { type: "state", wheel }))
@@ -113,6 +134,7 @@ export class RouletteHub {
 
   async close() {
     clearInterval(this.heartbeat);
+    clearInterval(this.presenceTimer);
     this.unsubscribe();
     for (const c of this.clients) c.socket.close(1001, "Server shutting down");
     this.clients.clear();

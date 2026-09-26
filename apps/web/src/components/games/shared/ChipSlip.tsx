@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { useCallback, useState } from "react";
+import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { Chip, CHIP_VALUES, type ChipValue } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { tap, tapTransition } from "@/lib/motion";
@@ -34,10 +34,16 @@ export function useChipSlip(limit: number) {
     [room, tray, play],
   );
 
+  // The limit follows the balance; keep `set` stable so effects that depend on it don't re-run every hand.
+  const limitRef = useRef(limit);
+  useLayoutEffect(() => {
+    limitRef.current = limit;
+  }, [limit]);
+
   /** Replace the stake with an exact amount (clamped to the limit). */
   const set = useCallback(
-    (value: number) => setChips(chipsFor(Math.max(0, Math.min(Math.floor(value), limit)))),
-    [limit],
+    (value: number) => setChips(chipsFor(Math.max(0, Math.min(Math.floor(value), limitRef.current)))),
+    [],
   );
 
   return { chips, tray, amount, room, add, set, clear: () => setChips([]) };
@@ -47,13 +53,13 @@ export type ChipSlip = ReturnType<typeof useChipSlip>;
 
 export function ChipTray({ slip, disabled, className }: { slip: ChipSlip; disabled?: boolean; className?: string }) {
   return (
-    <div className={cn("grid max-w-[360px] grid-cols-6 place-items-center gap-1", className)}>
+    <div className={cn("grid max-w-[380px] grid-cols-7 place-items-center gap-1", className)}>
       {CHIP_VALUES.map((v) => (
         <Chip
           key={slip.tray[v]}
           chipId={slip.tray[v]}
           value={v}
-          size={40}
+          size={38}
           disabled={disabled || v > slip.room}
           onClick={() => slip.add(v)}
         />

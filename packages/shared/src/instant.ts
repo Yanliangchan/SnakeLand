@@ -9,7 +9,7 @@ import type { Chips } from "./money";
  */
 
 export const HOUSE_EDGE_PERCENT = 1;
-export const INSTANT_BET_LIMITS = { min: 10, max: 5_000 } as const;
+export const INSTANT_BET_LIMITS = { min: 10, max: 10_000 } as const;
 
 export function applyX100(stake: Chips, x100: number): Chips {
   if (!Number.isSafeInteger(stake) || stake < 0) throw new RangeError("stake must be a non-negative integer");
@@ -23,9 +23,16 @@ export function formatX100(x100: number): string {
 
 // ---------------------------------------------------------------- Mines
 
-export const MINES_TILES = 25;
-export const MINES_MIN = 1;
-export const MINES_MAX = 24;
+/** Board side lengths players can choose (3×3 … 8×8). */
+export const MINES_SIZES = [3, 4, 5, 6, 7, 8] as const;
+export const MINES_DEFAULT_SIZE = 5;
+/** Mines carries a 3% house edge (97% return); Plinko keeps its own tables. */
+export const MINES_EDGE_PERCENT = 3;
+/** Multipliers are capped at 1,000,000× so payouts stay exact integers (and within the balance limit). */
+export const MINES_MAX_MULTIPLIER_X100 = 100_000_000;
+
+export const isMinesSize = (v: unknown): v is number => (MINES_SIZES as readonly unknown[]).includes(v);
+export const minesTiles = (size: number) => size * size;
 
 function choose(n: number, k: number): bigint {
   if (k < 0 || k > n) return 0n;
@@ -34,22 +41,30 @@ function choose(n: number, k: number): bigint {
   return r;
 }
 
-/**
- * Multiplier after `picks` safe tiles with `mines` mines, in hundredths:
- * floor(99 * C(25, picks) / C(25 - mines, picks)), i.e. fair odds minus 1%.
- */
-export function minesMultiplierX100(mines: number, picks: number): number {
-  if (!Number.isInteger(mines) || mines < MINES_MIN || mines > MINES_MAX) throw new RangeError("invalid mine count");
-  if (!Number.isInteger(picks) || picks < 0 || picks > MINES_TILES - mines) throw new RangeError("invalid pick count");
-  if (picks === 0) return 100;
-  const x = (BigInt(100 - HOUSE_EDGE_PERCENT) * choose(MINES_TILES, picks)) / choose(MINES_TILES - mines, picks);
-  return Number(x);
+/** Valid mine counts for a board: at least 1, at most one fewer than the tiles. */
+export function minesRange(tiles: number): { min: number; max: number } {
+  return { min: 1, max: tiles - 1 };
 }
 
-/** Tile indexes (0-24, row-major) holding mines, sorted. */
-export function minesPositions(serverSeed: string, clientSeed: string, mines: number): number[] {
-  const tiles = Array.from({ length: MINES_TILES }, (_, i) => i);
-  const shuffled = fairShuffle(tiles, fairFloats(serverSeed, clientSeed, 0, MINES_TILES - 1));
+/**
+ * Multiplier after `picks` safe tiles on a board of `tiles` with `mines`, in
+ * hundredths: floor(97 * C(tiles, picks) / C(tiles - mines, picks)), i.e. the
+ * fair odds minus the house edge.
+ */
+export function minesMultiplierX100(tiles: number, mines: number, picks: number): number {
+  if (!Number.isInteger(tiles) || !isMinesSize(Math.sqrt(tiles))) throw new RangeError("invalid board");
+  const { min, max } = minesRange(tiles);
+  if (!Number.isInteger(mines) || mines < min || mines > max) throw new RangeError("invalid mine count");
+  if (!Number.isInteger(picks) || picks < 0 || picks > tiles - mines) throw new RangeError("invalid pick count");
+  if (picks === 0) return 100;
+  const x = (BigInt(100 - MINES_EDGE_PERCENT) * choose(tiles, picks)) / choose(tiles - mines, picks);
+  return x > BigInt(MINES_MAX_MULTIPLIER_X100) ? MINES_MAX_MULTIPLIER_X100 : Number(x);
+}
+
+/** Tile indexes (row-major) holding mines, sorted. */
+export function minesPositions(serverSeed: string, clientSeed: string, tiles: number, mines: number): number[] {
+  const all = Array.from({ length: tiles }, (_, i) => i);
+  const shuffled = fairShuffle(all, fairFloats(serverSeed, clientSeed, 0, tiles - 1));
   return shuffled.slice(0, mines).sort((a, b) => a - b);
 }
 
@@ -134,6 +149,8 @@ export interface MinesRoundDTO {
   version: number;
   status: MinesStatus;
   bet: Chips;
+  /** Board side length (tiles = size²). */
+  size: number;
   mines: number;
   /** Safe tiles picked so far, in pick order. */
   picks: number[];

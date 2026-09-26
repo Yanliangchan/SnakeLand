@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  MINES_MAX,
-  MINES_MIN,
-  MINES_TILES,
+  MINES_SIZES,
+  minesTiles,
   PLINKO_RISKS,
   PLINKO_ROWS_MAX,
   PLINKO_ROWS_MIN,
@@ -64,41 +63,49 @@ describe("plinko path", () => {
 });
 
 describe("mines", () => {
-  it("prices the first pick at fair odds minus 1%", () => {
-    expect(minesMultiplierX100(1, 0)).toBe(100);
-    expect(minesMultiplierX100(1, 1)).toBe(103); // 25/24 * 0.99 = 1.03125
-    expect(minesMultiplierX100(3, 1)).toBe(112); // 25/22 * 0.99 = 1.125
-    expect(minesMultiplierX100(24, 1)).toBe(2475); // 25 * 0.99
+  it("prices the first pick at fair odds minus 3%", () => {
+    expect(minesMultiplierX100(25, 1, 0)).toBe(100);
+    expect(minesMultiplierX100(25, 1, 1)).toBe(101); // 25/24 * 0.97 = 1.0104
+    expect(minesMultiplierX100(25, 3, 1)).toBe(110); // 25/22 * 0.97 = 1.1022
+    expect(minesMultiplierX100(25, 24, 1)).toBe(2425); // 25 * 0.97
+    expect(minesMultiplierX100(9, 8, 1)).toBe(873); // 9 * 0.97
+    expect(() => minesMultiplierX100(25, 25, 1)).toThrow();
+    expect(() => minesMultiplierX100(10, 1, 1)).toThrow(); // not a square board
   });
 
-  it("never pays more than 99% in expectation, for every mines/picks combination", () => {
-    for (let m = MINES_MIN; m <= MINES_MAX; m++) {
-      let prev = 0;
-      for (let k = 1; k <= MINES_TILES - m; k++) {
-        const x = minesMultiplierX100(m, k);
-        expect(x).toBeGreaterThan(prev);
-        prev = x;
-        const survive = binom(MINES_TILES - m, k) / binom(MINES_TILES, k);
-        const ev = (survive * x) / 100;
-        expect(ev).toBeLessThanOrEqual(0.99 + 1e-9);
-        expect(ev).toBeGreaterThan(0.95);
+  it("returns at most 97% in expectation on every board, mine count and pick count", () => {
+    for (const size of MINES_SIZES) {
+      const tiles = minesTiles(size);
+      for (let m = 1; m < tiles; m++) {
+        let prev = 0;
+        for (let k = 1; k <= tiles - m; k++) {
+          const x = minesMultiplierX100(tiles, m, k);
+          expect(x).toBeGreaterThanOrEqual(prev);
+          prev = x;
+          const survive = binom(tiles - m, k) / binom(tiles, k);
+          const ev = (survive * x) / 100;
+          expect(ev).toBeLessThanOrEqual(0.97 + 1e-9);
+        }
       }
     }
   });
 
-  it("places exactly N distinct mines, deterministically", () => {
-    for (const m of [1, 5, 24]) {
-      const pos = minesPositions(SEED, "client", m);
-      expect(pos).toHaveLength(m);
-      expect(new Set(pos).size).toBe(m);
-      expect(pos.every((p) => p >= 0 && p < 25)).toBe(true);
-      expect(minesPositions(SEED, "client", m)).toEqual(pos);
+  it("places exactly N distinct mines on any board, deterministically", () => {
+    for (const size of MINES_SIZES) {
+      const tiles = minesTiles(size);
+      for (const m of [1, Math.floor(tiles / 2), tiles - 1]) {
+        const pos = minesPositions(SEED, "client", tiles, m);
+        expect(pos).toHaveLength(m);
+        expect(new Set(pos).size).toBe(m);
+        expect(pos.every((p) => p >= 0 && p < tiles)).toBe(true);
+        expect(minesPositions(SEED, "client", tiles, m)).toEqual(pos);
+      }
     }
   });
 
   it("puts a single mine on every tile uniformly", () => {
     const counts = new Array(25).fill(0);
-    for (let i = 0; i < 25_000; i++) counts[minesPositions(SEED, `u${i}`, 1)[0]!]++;
+    for (let i = 0; i < 25_000; i++) counts[minesPositions(SEED, `u${i}`, 25, 1)[0]!]++;
     for (const c of counts) expect(Math.abs(c - 1000)).toBeLessThan(160);
   });
 });
@@ -107,7 +114,8 @@ describe("applyX100", () => {
   it("floors exactly, even for huge multipliers", () => {
     expect(applyX100(100, 103)).toBe(103);
     expect(applyX100(15, 150)).toBe(22);
-    expect(applyX100(5000, minesMultiplierX100(12, 13))).toBeGreaterThan(0);
+    expect(minesMultiplierX100(64, 32, 32)).toBe(100_000_000); // capped at 1,000,000×
+    expect(applyX100(10_000, minesMultiplierX100(64, 32, 32))).toBe(10_000_000_000);
     expect(() => applyX100(1.5, 100)).toThrow();
   });
 });

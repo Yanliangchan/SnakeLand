@@ -58,6 +58,28 @@ export function Lobby() {
           <DailyClaim />
         </div>
 
+        <div className="mt-3 grid grid-cols-2 gap-3">
+          {[
+            { href: "/leaderboard", title: "Leaderboards", sub: "Weekly perks · all-time titles" },
+            { href: "/profile", title: "Profile", sub: "Stats, streaks and perks" },
+          ].map((l) => (
+            <motion.div key={l.href} {...fadeUp} whileTap={tap} transition={tapTransition}>
+              <Link
+                href={l.href}
+                className="flex items-center justify-between gap-3 rounded-[var(--radius-card)] bg-surface px-4 py-3.5 transition-colors hairline hover:border-hairline-strong sm:px-5"
+              >
+                <span className="min-w-0">
+                  <span className="block text-[15px] font-semibold">{l.title}</span>
+                  <span className="block truncate text-[12px] text-fg-muted">{l.sub}</span>
+                </span>
+                <span aria-hidden className="text-fg-muted">
+                  →
+                </span>
+              </Link>
+            </motion.div>
+          ))}
+        </div>
+
         <h2 className="mt-6 text-[11px] font-medium uppercase tracking-[0.08em] text-fg-muted">Games</h2>
         <motion.ul
           initial="hidden"

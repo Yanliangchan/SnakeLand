@@ -38,7 +38,9 @@ export function roundDTO(row: RoundRow): RouletteRoundDTO {
 /** Messages carried on the bus; the socket hub routes them. */
 export type RouletteBusMessage =
   | { kind: "wheel"; wheelId: WheelId; message: unknown }
-  | { kind: "user"; userId: string; message: unknown };
+  | { kind: "user"; userId: string; message: unknown }
+  /** Someone started watching a wheel: the dealer should check it now. */
+  | { kind: "wake"; wheelId: WheelId };
 
 export class RouletteService {
   constructor(

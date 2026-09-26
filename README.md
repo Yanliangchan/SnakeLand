@@ -51,9 +51,11 @@ pnpm typecheck && pnpm lint && pnpm test      # API tests need Postgres (DB: sna
 - Every change runs in one DB transaction. It locks the wallet row (`SELECT … FOR UPDATE`) and appends exactly one
   row to `transactions` (`user_id, game, table_id, round_id, amount, type, balance_after`).
 - The ledger is **append-only**: a Postgres trigger rejects `UPDATE`, `DELETE` and `TRUNCATE`. For every user,
-  `sum(amount) = balance`.
+  `sum(amount) = balance`. The only exception is deleting a whole guest, which opts in per transaction
+  (`SET LOCAL snk.purge = 'on'`).
 - Writes can take an idempotency key, so a retried request never pays twice.
-- Daily free claim: 5,000 chips on a rolling 24h cooldown, enforced under the same row lock.
+- New players start with 1,000 chips. The daily free claim is 1,000 chips on a rolling 24h cooldown, enforced
+  under the same row lock (perks can raise both, see below).
 - Guest → account: a guest's chips (and claim cooldown) carry over **only into a brand-new account**. Signing a
   guest into an existing account doesn't merge anything, so guest sessions can't be farmed for chips.
 
@@ -81,11 +83,12 @@ pnpm typecheck && pnpm lint && pnpm test      # API tests need Postgres (DB: sna
 
 ## Mines and Plinko
 
-Both games have a **1% house edge**, bets of 10–5,000, and multipliers stored as integer hundredths
+Mines has a **3% house edge** and Plinko **1%**. Bets are 10–10,000, and multipliers stored as integer hundredths
 (`150` = 1.50×), so a payout is always exactly `floor(stake × x100 / 100)`.
 
-- **Mines**: a 5×5 grid with 1–24 mines. After *k* safe picks the multiplier is
-  `floor(99 × C(25, k) / C(25 − mines, k))` hundredths, computed with BigInt so there's no float drift. The mine
+- **Mines**: the player picks the board (3×3 to 8×8) and the number of mines (1 to tiles − 1). After *k* safe
+  picks on a board of *t* tiles the multiplier is `floor(97 × C(t, k) / C(t − mines, k))` hundredths (capped at
+  1,000,000×), computed with BigInt so there's no float drift. The mine
   layout is the first *n* tiles of a fair Fisher–Yates shuffle. You can cash out any time after the first pick,
   and finding every safe tile cashes out automatically. A refresh resumes the round.
 - **Plinko**: 8–16 rows × low/medium/high risk. There's one fair float per row (below 0.5 = left), so the landing
@@ -137,6 +140,43 @@ Both games have a **1% house edge**, bets of 10–5,000, and multipliers stored 
 - **WebSocket security**: the Origin must be on the allow-list (preventing cross-site WebSocket hijacking), the
   session cookie is required, messages are capped at 2 KB and 30 per 10s and validated with Zod, there are at
   most 5 sockets per user, and a heartbeat drops dead connections.
+
+## Leaderboards, perks and profiles
+
+Profit counts only play (bets, payouts, refunds); claims, bonuses and admin adjustments don't. Running counters
+on `wallets` (lifetime profit, this week's profit, wagered, biggest win) are updated inside the same wallet
+transaction, so rankings never scan the ledger. Only registered, non-suspended players rank.
+
+- **Weekly board** (weeks start Monday 00:00 UTC): #1/#2/#3 get daily chips ×3/×2/×1.5.
+- **Top-5 streak**: once a day the previous day's weekly top 5 is snapshotted. 3 days in a row → +10% daily
+  chips, 7 days → gold name, 14 days → daily chips every 12h.
+- **All-time board**: #1 Snake King, #2 Viper, #3 Cobra; the top 10 are Hall of Fame.
+- `/profile` shows balance, weekly/all-time profit and rank, wagered, biggest win, rounds, favourite game,
+  the next claim's amount and streak progress.
+
+## Data retention
+
+A background job runs every 10 minutes on one instance (Redis lease):
+
+- **Guests** are deleted with everything they own when they leave ("Leave guest session"), right after their
+  chips move into a new account, or after 3 days without activity. Registered accounts are never deleted.
+- **Finished game rows** (rounds, shoes, closed tables, drops, settled roulette bets) are deleted after 7 days.
+  Money records (the ledger) stay, so balances always reconcile.
+- Expired sessions/verifications, rate-limit rows older than a day, and admin audit rows older than 90 days.
+
+Resource use: the Postgres pool is 5 connections, per-request logging is off in production, and a roulette wheel
+nobody is watching finishes its round and then sleeps (no DB queries) until someone opens it.
+
+## Admin console
+
+`/admin` is protected by a password stored only as an scrypt hash in `ADMIN_PASSWORD_HASH` (API service). Unset
+disables the console (404). Sessions are random tokens kept hashed in Redis for 4 hours, in an `HttpOnly`,
+`SameSite=Strict` cookie scoped to `/v1/admin`. Logins are rate-limited and lock for 15 minutes after 5 failures
+from one IP (or 30 overall). Every action lands in `admin_audit`.
+
+Admins can search players, view full profiles and recent transactions, add/remove/set chips (as `admin_adjust`
+ledger rows), reset the daily claim, rename, suspend (signs out everywhere and blocks sign-in), sign a player out
+everywhere, and delete guests.
 
 ## Security
 
@@ -194,6 +234,7 @@ BETTER_AUTH_SECRET=<openssl rand -base64 48>
 API_URL=https://<web domain>          # auth is served through the web origin
 WEB_ORIGINS=https://<web domain>
 CLIENT_IP_HEADER=x-real-ip            # Railway's edge sets it; used for rate limits
+ADMIN_PASSWORD_HASH=<output of pnpm --filter @snakeland/api admin:hash>   # enables /admin
 ```
 
 **Web variables** (`NEXT_PUBLIC_*` is read at build time)

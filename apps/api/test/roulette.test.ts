@@ -17,6 +17,7 @@ import { RouletteDealer } from "../src/games/roulette/dealer";
 import { RouletteService } from "../src/games/roulette/service";
 import { MemoryBus } from "../src/realtime/bus";
 import { AlwaysLeader } from "../src/realtime/leader";
+import { MemoryPresence } from "../src/realtime/presence";
 import { WalletService } from "../src/wallet/wallet-service";
 import { createUser, testDb } from "./helpers";
 
@@ -29,7 +30,9 @@ bus.subscribe((m) => messages.push(m));
 let clock = new Date();
 const roulette = new RouletteService(db, wallet, bus, () => clock);
 const quiet = { error: () => {} };
-const dealer = new RouletteDealer(db, wallet, roulette, bus, new AlwaysLeader(), quiet);
+const presence = new MemoryPresence();
+presence.set("viewers", { w1: 1, w2: 1, w3: 1 }, true);
+const dealer = new RouletteDealer(db, wallet, roulette, bus, new AlwaysLeader(), presence, quiet);
 const TABLE = crypto.randomUUID();
 
 const at = (ms: number) => new Date(clock.getTime() + ms);
@@ -60,6 +63,9 @@ describe("Roulette dealer + bets", () => {
 
   it("takes bets, enforces limits, and refunds on clear", async () => {
     const userId = await createUser(db);
+    // Enough chips to reach the per-spin cap.
+    await wallet.apply({ userId, amount: 20_000, type: "payout", game: "roulette", roundId: crypto.randomUUID() });
+    const TOP = STARTING_BALANCE + 20_000;
     const r = await liveRound();
     const res = await roulette.place(userId, {
       wheelId: "w1",
@@ -71,7 +77,7 @@ describe("Roulette dealer + bets", () => {
         { betId: "red", amount: 50 },
       ],
     });
-    expect(res.balance).toBe(STARTING_BALANCE - 160);
+    expect(res.balance).toBe(TOP - 160);
     expect(res.myBets.total).toBe(160);
     expect(res.myBets.bets.find((b) => b.betId === "red")?.amount).toBe(150);
 
@@ -82,13 +88,13 @@ describe("Roulette dealer + bets", () => {
       roulette.place(userId, { wheelId: "w1", roundId: r.id, tableId: TABLE, bets: [{ betId: "odd", amount: 5 }] }),
     ).rejects.toMatchObject({ code: "BET_OUT_OF_RANGE" });
     await expect(
-      roulette.place(userId, { wheelId: "w1", roundId: r.id, tableId: TABLE, bets: [{ betId: "odd", amount: 4_900 }] }),
+      roulette.place(userId, { wheelId: "w1", roundId: r.id, tableId: TABLE, bets: [{ betId: "odd", amount: 9_900 }] }),
     ).rejects.toMatchObject({ code: "BET_OUT_OF_RANGE" });
-    expect((await wallet.getWallet(userId)).balance).toBe(STARTING_BALANCE - 160); // rolled back
+    expect((await wallet.getWallet(userId)).balance).toBe(TOP - 160); // rolled back
 
     const cleared = await roulette.clear(userId, { wheelId: "w1", roundId: r.id });
-    expect(cleared.balance).toBe(STARTING_BALANCE);
-    expect(await wallet.ledgerSum(userId)).toBe(STARTING_BALANCE);
+    expect(cleared.balance).toBe(TOP);
+    expect(await wallet.ledgerSum(userId)).toBe(TOP);
     const activity = messages.filter((m) => (m as { message: { type: string } }).message.type === "activity");
     expect(activity.length).toBeGreaterThanOrEqual(2);
   });
@@ -166,11 +172,32 @@ describe("Roulette dealer + bets", () => {
   });
 
   it("stays consistent when two dealers tick at once", async () => {
-    const other = new RouletteDealer(db, wallet, roulette, bus, new AlwaysLeader(), quiet);
+    const other = new RouletteDealer(db, wallet, roulette, bus, new AlwaysLeader(), presence, quiet);
     const t = new Date(Date.now() + 60 * 60_000);
     await Promise.all([dealer.tick(t), other.tick(t), dealer.tick(new Date(t.getTime() + 60_000)), other.tick(new Date(t.getTime() + 60_000))]);
     const live = await db.select().from(rouletteRounds).where(eq(rouletteRounds.wheelId, "w2"));
     expect(live.filter((x) => x.phase !== "settled").length).toBeLessThanOrEqual(1);
+  });
+});
+
+describe("Roulette dealer idling", () => {
+  it("lets an unwatched wheel sleep after its round, and wakes it on join", async () => {
+    const empty = new MemoryPresence();
+    const idle = new RouletteDealer(db, wallet, roulette, bus, new AlwaysLeader(), empty, quiet);
+    const base = new Date(Date.now() + 3 * 60 * 60_000);
+    // Walk every live round to settled and past the result window.
+    for (let i = 0; i < 4; i++) await idle.tick(new Date(base.getTime() + i * 60_000));
+    const later = new Date(base.getTime() + 10 * 60_000);
+    await idle.tick(later);
+    const live = async () =>
+      (await db.select().from(rouletteRounds).where(eq(rouletteRounds.wheelId, "w3"))).filter((x) => x.phase !== "settled");
+    expect(await live()).toHaveLength(0);
+
+    empty.set("someone", { w3: 1 });
+    await bus.publish({ kind: "wake", wheelId: "w3" });
+    await idle.tick(new Date(later.getTime() + 1_000));
+    expect(await live()).toHaveLength(1);
+    await idle.stop();
   });
 });
 

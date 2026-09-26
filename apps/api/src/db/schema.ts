@@ -33,6 +33,8 @@ export const users = pgTable("users", {
   emailVerified: boolean("email_verified").notNull().default(false),
   image: text("image"),
   isAnonymous: boolean("is_anonymous").notNull().default(false),
+  /** Set by an admin; suspended players can't play or claim. */
+  suspendedAt: timestamp("suspended_at", { withTimezone: true }),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });
@@ -111,10 +113,24 @@ export const wallets = pgTable(
       .references(() => users.id, { onDelete: "restrict" }),
     balance: bigint("balance", { mode: "number" }).notNull(),
     lastDailyClaimAt: timestamp("last_daily_claim_at", { withTimezone: true }),
+    /** When the next daily claim unlocks (perks can shorten the cooldown). */
+    nextDailyClaimAt: timestamp("next_daily_claim_at", { withTimezone: true }),
+    // Running play counters, maintained by WalletService so leaderboards are cheap reads.
+    lifetimeProfit: bigint("lifetime_profit", { mode: "number" }).notNull().default(0),
+    weekKey: integer("week_key").notNull().default(0),
+    weekProfit: bigint("week_profit", { mode: "number" }).notNull().default(0),
+    prevWeekKey: integer("prev_week_key").notNull().default(0),
+    prevWeekProfit: bigint("prev_week_profit", { mode: "number" }).notNull().default(0),
+    totalWagered: bigint("total_wagered", { mode: "number" }).notNull().default(0),
+    biggestWin: bigint("biggest_win", { mode: "number" }).notNull().default(0),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
-  (t) => [check("wallets_balance_non_negative", sql`${t.balance} >= 0`)],
+  (t) => [
+    check("wallets_balance_non_negative", sql`${t.balance} >= 0`),
+    index("wallets_week_profit_idx").on(t.weekKey, t.weekProfit.desc()),
+    index("wallets_lifetime_profit_idx").on(t.lifetimeProfit.desc()),
+  ],
 );
 
 /**
@@ -149,7 +165,7 @@ export const transactions = pgTable(
       "transactions_amount_sign",
       sql`(${t.type} = 'bet' AND ${t.amount} < 0)
         OR (${t.type} IN ('payout', 'refund', 'daily_claim', 'signup_bonus') AND ${t.amount} > 0)
-        OR (${t.type} = 'guest_merge' AND ${t.amount} <> 0)`,
+        OR (${t.type}::text IN ('guest_merge', 'admin_adjust') AND ${t.amount} <> 0)`,
     ),
     check(
       "transactions_game_required",
@@ -395,6 +411,8 @@ export const minesRounds = pgTable(
       .references(() => users.id, { onDelete: "restrict" }),
     status: minesStatusEnum("status").notNull().default("playing"),
     bet: bigint("bet", { mode: "number" }).notNull(),
+    /** Board side length; tiles = size². */
+    size: integer("size").notNull().default(5),
     mines: integer("mines").notNull(),
     /** Safe tiles picked, in order. */
     picks: jsonb("picks").$type<number[]>().notNull().default([]),
@@ -411,7 +429,8 @@ export const minesRounds = pgTable(
   (t) => [
     index("mines_rounds_user_idx").on(t.userId, t.createdAt.desc()),
     uniqueIndex("mines_rounds_one_active_uq").on(t.userId).where(sql`${t.status} = 'playing'`),
-    check("mines_rounds_mines_range", sql`${t.mines} BETWEEN 1 AND 24`),
+    check("mines_rounds_size_range", sql`${t.size} BETWEEN 3 AND 8`),
+    check("mines_rounds_mines_range", sql`${t.mines} BETWEEN 1 AND ${t.size} * ${t.size} - 1`),
   ],
 );
 
@@ -442,6 +461,42 @@ export const plinkoDrops = pgTable(
   ],
 );
 
+// ---------------------------------------------------------------------------
+// Progress, maintenance and admin
+// ---------------------------------------------------------------------------
+
+/** Consecutive days a player has been in the weekly top 5 (updated by the daily snapshot). */
+export const playerPerks = pgTable("player_perks", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  top5Streak: integer("top5_streak").notNull().default(0),
+  /** UTC day (YYYY-MM-DD) of the last snapshot that found them in the top 5. */
+  lastTop5Day: text("last_top5_day"),
+  updatedAt: updatedAt(),
+});
+
+/** Small key/value store for scheduled jobs (e.g. the last day the snapshot ran). */
+export const maintenanceState = pgTable("maintenance_state", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+  updatedAt: updatedAt(),
+});
+
+export const adminAudit = pgTable(
+  "admin_audit",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    action: text("action").notNull(),
+    /** Not a foreign key: the record outlives a deleted guest. */
+    targetUserId: text("target_user_id"),
+    detail: jsonb("detail").$type<Record<string, unknown>>(),
+    ip: text("ip"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("admin_audit_created_idx").on(t.createdAt.desc())],
+);
+
 export const schema = {
   users,
   sessions,
@@ -461,4 +516,7 @@ export const schema = {
   baccaratRounds,
   rouletteRounds,
   rouletteBets,
+  playerPerks,
+  maintenanceState,
+  adminAudit,
 };

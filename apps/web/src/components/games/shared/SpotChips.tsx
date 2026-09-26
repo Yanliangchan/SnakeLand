@@ -74,13 +74,13 @@ export function ChipSelector<K extends string>({
 }) {
   const { play } = useSettings();
   return (
-    <div className={cn("grid max-w-[360px] grid-cols-6 place-items-center gap-1 pt-1", className)} role="radiogroup" aria-label="Chip value">
+    <div className={cn("grid max-w-[380px] grid-cols-7 place-items-center gap-1 pt-1", className)} role="radiogroup" aria-label="Chip value">
       {CHIP_VALUES.map((v) => (
         <motion.div key={v} animate={{ y: state.selected === v ? -4 : 0 }} transition={{ type: "spring", stiffness: 500, damping: 30 }}>
           <Chip
             chipId={state.tray[v]}
             value={v}
-            size={40}
+            size={38}
             selected={state.selected === v}
             disabled={disabled}
             onClick={() => {

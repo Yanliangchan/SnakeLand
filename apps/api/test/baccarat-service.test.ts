@@ -43,7 +43,7 @@ describe("BaccaratService", () => {
       code: "BET_OUT_OF_RANGE",
     });
     await expect(
-      baccarat.play(userId, { tableId: table.id, bets: { player: 3000, banker: 2001 } }),
+      baccarat.play(userId, { tableId: table.id, bets: { player: 6000, banker: 4001 } }),
     ).rejects.toMatchObject({ code: "BET_OUT_OF_RANGE" });
     const other = await createUser(db);
     await expect(baccarat.play(other, { tableId: table.id, bets: { player: 10 } })).rejects.toMatchObject({

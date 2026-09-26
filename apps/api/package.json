@@ -12,7 +12,8 @@
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx --env-file-if-exists=.env src/db/migrate.ts",
-    "db:migrate:prod": "node dist/migrate.js"
+    "db:migrate:prod": "node dist/migrate.js",
+    "admin:hash": "tsx src/admin/hash-password.ts"
   },
   "dependencies": {
     "@fastify/cors": "^11.3.0",

@@ -4,9 +4,10 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import {
   INSTANT_BET_LIMITS,
-  MINES_MAX,
-  MINES_MIN,
-  MINES_TILES,
+  MINES_DEFAULT_SIZE,
+  MINES_SIZES,
+  minesRange,
+  minesTiles,
   applyX100,
   formatX100,
   minesPositions,
@@ -28,15 +29,17 @@ import { RecentMultipliers, type RecentItem } from "../shared/RecentMultipliers"
 import { useClientSeed } from "../shared/useClientSeed";
 import { Tile, type TileState } from "./Tile";
 
-const MINE_PRESETS = [1, 3, 5, 10, 24];
+/** Quick picks scale with the board: a few, a quarter, half, and all-but-one. */
+const presetsFor = (tiles: number) =>
+  [...new Set([1, 3, Math.round(tiles / 4), Math.round(tiles / 2), tiles - 1])].filter((n) => n >= 1 && n < tiles);
 
-function tileStates(round: MinesRoundDTO | null): TileState[] {
-  const states: TileState[] = Array(MINES_TILES).fill("hidden");
+function tileStates(round: MinesRoundDTO | null, tiles: number): TileState[] {
+  const states: TileState[] = Array(tiles).fill("hidden");
   if (!round) return states;
   for (const t of round.picks) states[t] = "gem";
   if (round.status !== "playing" && round.minePositions) {
     const mines = new Set(round.minePositions);
-    for (let t = 0; t < MINES_TILES; t++) {
+    for (let t = 0; t < tiles; t++) {
       if (states[t] === "gem") continue;
       states[t] = t === round.bustTile ? "bust" : mines.has(t) ? "mine" : "gem-dim";
     }
@@ -49,24 +52,35 @@ function message(e: unknown) {
   return "Something went wrong. Try again.";
 }
 
-function MinesStepper({ value, onChange, disabled }: { value: number; onChange: (v: number) => void; disabled: boolean }) {
+function MinesStepper({
+  value,
+  tiles,
+  onChange,
+  disabled,
+}: {
+  value: number;
+  tiles: number;
+  onChange: (v: number) => void;
+  disabled: boolean;
+}) {
+  const { min, max } = minesRange(tiles);
   const btn = "grid size-9 place-items-center rounded-[10px] text-fg-muted transition-colors hairline hover:text-fg disabled:opacity-40";
   return (
     <div className="flex flex-wrap items-center justify-between gap-2">
       <div className="flex items-center gap-1.5">
-        <motion.button whileTap={tap} transition={tapTransition} className={btn} disabled={disabled || value <= MINES_MIN} onClick={() => onChange(value - 1)} aria-label="Fewer mines">
+        <motion.button whileTap={tap} transition={tapTransition} className={btn} disabled={disabled || value <= min} onClick={() => onChange(value - 1)} aria-label="Fewer mines">
           −
         </motion.button>
         <div className="flex w-16 flex-col items-center leading-tight">
           <span className="text-[17px] font-semibold tabular">{value}</span>
           <span className="text-[11px] text-fg-muted">{value === 1 ? "mine" : "mines"}</span>
         </div>
-        <motion.button whileTap={tap} transition={tapTransition} className={btn} disabled={disabled || value >= MINES_MAX} onClick={() => onChange(value + 1)} aria-label="More mines">
+        <motion.button whileTap={tap} transition={tapTransition} className={btn} disabled={disabled || value >= max} onClick={() => onChange(value + 1)} aria-label="More mines">
           +
         </motion.button>
       </div>
       <div className="flex gap-1">
-        {MINE_PRESETS.map((p) => (
+        {presetsFor(tiles).map((p) => (
           <motion.button
             key={p}
             whileTap={tap}
@@ -86,6 +100,30 @@ function MinesStepper({ value, onChange, disabled }: { value: number; onChange: 
   );
 }
 
+function SizePicker({ value, onChange, disabled }: { value: number; onChange: (v: number) => void; disabled: boolean }) {
+  return (
+    <div className="grid grid-cols-6 gap-1" role="radiogroup" aria-label="Board size">
+      {MINES_SIZES.map((n) => (
+        <motion.button
+          key={n}
+          role="radio"
+          aria-checked={n === value}
+          whileTap={tap}
+          transition={tapTransition}
+          disabled={disabled}
+          onClick={() => onChange(n)}
+          className={cn(
+            "h-9 rounded-[8px] text-[12px] font-medium tabular transition-colors hairline disabled:opacity-40",
+            n === value ? "bg-fg text-bg" : "text-fg-muted hover:text-fg",
+          )}
+        >
+          {n}×{n}
+        </motion.button>
+      ))}
+    </div>
+  );
+}
+
 export function MinesGame() {
   const { me, setWallet } = useSession();
   const { play } = useSettings();
@@ -95,12 +133,22 @@ export function MinesGame() {
 
   const [round, setRound] = useState<MinesRoundDTO | null>(null);
   const [nextCommit, setNextCommit] = useState<string | null>(null);
+  const [size, setSize] = useState<number>(MINES_DEFAULT_SIZE);
   const [mines, setMines] = useState(3);
+  // A round in play fixes the board; otherwise the chosen size does.
+  const boardSize = round?.size ?? size;
+  const tiles = minesTiles(boardSize);
+  const changeSize = (n: number) => {
+    setSize(n);
+    setMines((m) => Math.min(m, minesRange(minesTiles(n)).max));
+    // Leaving a finished board on screen at the old size would be confusing.
+    if (round && round.status !== "playing") setRound(null);
+  };
   const [loaded, setLoaded] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [recent, setRecent] = useState<RecentItem[]>([]);
-  const [lastReveal, setLastReveal] = useState<{ reveal: FairRevealDTO; mines: number; positions: number[] } | null>(null);
+  const [lastReveal, setLastReveal] = useState<{ reveal: FairRevealDTO; tiles: number; mines: number; positions: number[] } | null>(null);
   const [fairOpen, setFairOpen] = useState(false);
   const busy = useRef(false);
 
@@ -117,6 +165,7 @@ export function MinesGame() {
         if (s.round) {
           setRound(s.round);
           setMines(s.round.mines);
+          setSize(s.round.size);
           setSlip(s.round.bet);
         }
         setLoaded(true);
@@ -135,7 +184,7 @@ export function MinesGame() {
       const x100 = u.round.status === "bust" ? 0 : u.round.multiplierX100;
       setRecent((r) => [{ id: u.round.id, x100 }, ...r].slice(0, 12));
       if (u.round.reveal && u.round.minePositions) {
-        setLastReveal({ reveal: u.round.reveal, mines: u.round.mines, positions: u.round.minePositions });
+        setLastReveal({ reveal: u.round.reveal, tiles: minesTiles(u.round.size), mines: u.round.mines, positions: u.round.minePositions });
       }
     }
   }
@@ -162,7 +211,7 @@ export function MinesGame() {
   const start = () =>
     run(async () => {
       if (slip.amount < INSTANT_BET_LIMITS.min) return setError(`Minimum bet is ${INSTANT_BET_LIMITS.min}.`);
-      apply(await minesApi.start({ bet: slip.amount, mines, clientSeed: clientSeed.next() }));
+      apply(await minesApi.start({ bet: slip.amount, size, mines, clientSeed: clientSeed.next() }));
     });
 
   const pick = (tile: number) =>
@@ -175,7 +224,7 @@ export function MinesGame() {
 
   const pickRandom = () => {
     if (!round) return;
-    const open = Array.from({ length: MINES_TILES }, (_, i) => i).filter((i) => !round.picks.includes(i));
+    const open = Array.from({ length: minesTiles(round.size) }, (_, i) => i).filter((i) => !round.picks.includes(i));
     const tile = open[crypto.getRandomValues(new Uint32Array(1))[0]! % open.length];
     if (tile !== undefined) void pick(tile);
   };
@@ -207,11 +256,11 @@ export function MinesGame() {
     return () => window.removeEventListener("keydown", l);
   }, []);
 
-  const states = tileStates(round);
+  const states = tileStates(round, tiles);
   const cashValue = round ? applyX100(round.bet, round.multiplierX100) : 0;
   const ended = round && round.status !== "playing";
   const outcomeOk = lastReveal
-    ? JSON.stringify(minesPositions(lastReveal.reveal.serverSeed, lastReveal.reveal.clientSeed, lastReveal.mines)) ===
+    ? JSON.stringify(minesPositions(lastReveal.reveal.serverSeed, lastReveal.reveal.clientSeed, lastReveal.tiles, lastReveal.mines)) ===
       JSON.stringify(lastReveal.positions)
     : null;
 
@@ -255,8 +304,11 @@ export function MinesGame() {
                     <StakeSummary slip={slip} limit={Math.min(INSTANT_BET_LIMITS.max, balance)} disabled={pending} />
                     <ChipTray slip={slip} disabled={pending || !loaded} />
                   </PanelSection>
+                  <PanelSection label="Board">
+                    <SizePicker value={size} onChange={changeSize} disabled={pending || !loaded} />
+                  </PanelSection>
                   <PanelSection label="Mines">
-                    <MinesStepper value={mines} onChange={setMines} disabled={pending || !loaded} />
+                    <MinesStepper value={mines} tiles={minesTiles(size)} onChange={setMines} disabled={pending || !loaded} />
                   </PanelSection>
                   <Button size="lg" block className="@4xl:w-44" onClick={start} loading={pending} disabled={!loaded || slip.amount < INSTANT_BET_LIMITS.min}>
                     Bet
@@ -322,7 +374,7 @@ export function MinesGame() {
             </AnimatePresence>
           </div>
 
-          <div className="grid aspect-square w-full grid-cols-5 gap-[1.5%]">
+          <div className="grid aspect-square w-full gap-[1.5%]" style={{ gridTemplateColumns: `repeat(${boardSize}, minmax(0, 1fr))` }}>
             {states.map((s, i) => (
               <Tile
                 key={i}
@@ -331,7 +383,7 @@ export function MinesGame() {
                 disabled={!playing || pending}
                 onPick={pick}
                 // Stagger the end-of-round reveal outward from the last tile opened.
-                delay={ended && !round.picks.includes(i) && i !== round.bustTile ? 0.15 + (i % 5) * 0.02 + Math.floor(i / 5) * 0.02 : 0}
+                delay={ended && !round.picks.includes(i) && i !== round.bustTile ? 0.15 + (i % boardSize) * 0.02 + Math.floor(i / boardSize) * 0.02 : 0}
               />
             ))}
           </div>

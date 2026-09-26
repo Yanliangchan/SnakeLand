@@ -14,7 +14,7 @@ export const RED_NUMBERS: ReadonlySet<number> = new Set([
 export type PocketColor = "red" | "black" | "zero";
 export const pocketColor = (n: number): PocketColor => (n === 0 ? "zero" : RED_NUMBERS.has(n) ? "red" : "black");
 
-export const ROULETTE_LIMITS = { minBet: 10, maxRoundTotal: 5_000 } as const;
+export const ROULETTE_LIMITS = { minBet: 10, maxRoundTotal: 10_000 } as const;
 
 /** Live cycle: bets open, then the wheel spins to a result that stays up briefly. */
 export const ROULETTE_TIMING = { bettingMs: 15_000, spinMs: 7_000, resultMs: 3_000 } as const;

@@ -2,6 +2,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { FastifyInstance, LightMyRequestResponse } from "fastify";
 import { DAILY_CLAIM_AMOUNT, STARTING_BALANCE } from "@snakeland/shared";
 import { buildApp } from "../src/app";
+import { eq } from "drizzle-orm";
+import { users } from "../src/db/schema";
 import { loadEnv } from "../src/env";
 import { testDb } from "./helpers";
 
@@ -121,6 +123,8 @@ describe("HTTP", () => {
     expect(after.user.isGuest).toBe(false);
     expect(after.wallet.balance).toBe(STARTING_BALANCE + DAILY_CLAIM_AMOUNT);
     expect(after.wallet.nextDailyClaimAt).not.toBeNull();
+    // The emptied guest is deleted right away.
+    expect(await db.select().from(users).where(eq(users.id, me.user.id))).toHaveLength(0);
   });
 
   it("rejects non-JSON bodies", async () => {
@@ -158,7 +162,7 @@ describe("HTTP", () => {
     expect(table).not.toHaveProperty("shoe.serverSeed");
 
     expect((await post("/v1/blackjack/rounds", { tableId: table.id, bet: 5 })).statusCode).toBe(400);
-    expect((await post("/v1/blackjack/rounds", { tableId: table.id, bet: 5001 })).statusCode).toBe(400);
+    expect((await post("/v1/blackjack/rounds", { tableId: table.id, bet: 10_001 })).statusCode).toBe(400);
     expect((await post("/v1/blackjack/rounds", { tableId: table.id, bet: 10.5 })).statusCode).toBe(400);
     expect((await post("/v1/blackjack/rounds", { tableId: table.id, bet: 10, clientSeed: "<script>" })).statusCode).toBe(
       400,

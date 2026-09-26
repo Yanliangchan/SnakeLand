@@ -43,6 +43,27 @@
       "when": 1790434605775,
       "tag": "0005_roulette",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790441495122,
+      "tag": "0006_mines_board_size",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1790441672991,
+      "tag": "0007_progress_admin",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1790441687074,
+      "tag": "0008_backfill_and_purge",
+      "breakpoints": true
     }
   ]
 }

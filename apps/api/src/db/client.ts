@@ -9,7 +9,8 @@ export type DbOrTx = Db | Tx;
 export function createDb(databaseUrl: string) {
   const pool = new pg.Pool({
     connectionString: databaseUrl,
-    max: 10,
+    // Small pool: the API is one modest instance, and Postgres memory scales with connections.
+    max: 5,
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 5_000,
     // Guard against runaway queries holding row locks on wallets.
