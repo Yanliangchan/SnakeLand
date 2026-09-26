@@ -19,6 +19,11 @@
   --color-win: #00d97e;
   --color-loss: #ff4d4d;
 
+  /* Table colours (roulette pockets, red card suits): the only non-state colours. */
+  --color-table-red: #d4403a;
+  --color-table-black: #141414;
+  --color-table-green: #1b8f4e;
+
   --font-sans: "Inter Variable", "SF Pro Text", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
 
   --radius-ui: 12px;

@@ -62,7 +62,7 @@ export function Felt({
   const betAmount = round ? round.totalBet : chips.reduce((s, c) => s + c.value, 0);
 
   return (
-    <div className="relative flex min-h-[460px] flex-col rounded-[var(--radius-card)] bg-surface px-4 py-5 hairline sm:min-h-[520px] sm:px-8 sm:py-6">
+    <div className="relative flex h-full min-h-[400px] flex-col px-4 py-3 sm:px-6 sm:py-4">
       <div className="flex items-center justify-between">
         <Recent recent={recent} streak={streak} />
         <button
@@ -78,7 +78,7 @@ export function Felt({
       </div>
 
       {/* Dealer */}
-      <div className="mt-6 flex min-h-[150px] flex-col items-center gap-3 sm:min-h-[170px]">
+      <div className="flex flex-1 flex-col items-center justify-center gap-2">
         <span className="text-[12px] font-medium uppercase tracking-[0.08em] text-fg-disabled">Dealer</span>
         {round && (
           <>
@@ -89,7 +89,7 @@ export function Felt({
       </div>
 
       {/* Centre line: rules, or the round result */}
-      <div className="my-4 grid min-h-[56px] place-items-center">
+      <div className="my-1 grid min-h-[48px] shrink-0 place-items-center">
         <AnimatePresence mode="wait">
           {settled ? (
             <motion.div key={`result-${round.id}`} {...fadeUp} className="flex flex-col items-center">
@@ -117,7 +117,7 @@ export function Felt({
       </div>
 
       {/* Player hands */}
-      <div className="flex min-h-[170px] flex-wrap items-start justify-center gap-x-10 gap-y-6">
+      <div className="flex flex-1 flex-wrap items-center justify-center gap-x-10 gap-y-4">
         <AnimatePresence>
           {round?.hands.map((h, i) => {
             const active = round.phase === "player" && i === round.activeHand && round.hands.length > 1;
@@ -158,7 +158,7 @@ export function Felt({
         </AnimatePresence>
       </div>
 
-      <div className="mt-auto flex justify-center pt-4">
+      <div className="flex shrink-0 justify-center pt-2">
         <div className="flex flex-col items-center gap-2">
           <ChipStack chips={chips} />
           <span className="text-[13px] font-medium text-fg-muted tabular">

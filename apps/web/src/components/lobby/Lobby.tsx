@@ -23,46 +23,47 @@ export function Lobby() {
   return (
     <div className="min-h-dvh">
       <AppHeader />
-      <main className="mx-auto max-w-5xl px-4 pb-24 pt-12 sm:px-6 sm:pt-16">
-        <motion.section {...fadeUp}>
-          <p className="text-[14px] text-fg-muted" suppressHydrationWarning>
-            {greeting()}
-            {firstName ? `, ${firstName}` : ""}.
-          </p>
-          <h1 className="mt-2 text-[48px] font-semibold leading-none tracking-[-0.035em] sm:text-[64px]">
-            <BalanceCounter value={me.wallet.balance} />
-          </h1>
-          <p className="mt-2 text-[14px] text-fg-muted">chips</p>
-        </motion.section>
-
-        <div className="mt-10">
+      <main className="mx-auto w-full max-w-[1440px] px-3 pb-10 pt-4 sm:px-4 lg:px-6 lg:pt-6">
+        <div className="grid gap-3 md:grid-cols-[1.3fr_1fr]">
+          <motion.section {...fadeUp} className="flex flex-col justify-between gap-4 rounded-[var(--radius-card)] bg-surface p-5 hairline sm:p-6">
+            <div>
+              <p className="text-[13px] text-fg-muted" suppressHydrationWarning>
+                {greeting()}
+                {firstName ? `, ${firstName}` : ""}.
+              </p>
+              <p className="mt-3 text-[11px] font-medium uppercase tracking-[0.08em] text-fg-muted">Balance</p>
+              <h1 className="mt-1 text-[40px] font-semibold leading-none tracking-[-0.035em] sm:text-[52px]">
+                <BalanceCounter value={me.wallet.balance} />
+                <span className="ml-2 text-[15px] font-normal tracking-normal text-fg-muted">chips</span>
+              </h1>
+            </div>
+            <AnimatePresence>
+              {me.user.isGuest && (
+                <motion.div {...fadeUp}>
+                  <Link
+                    href="/sign-up"
+                    className="flex items-center justify-between gap-3 rounded-[12px] bg-bg/60 px-4 py-3 text-[13px] transition-colors hairline hover:border-hairline-strong"
+                  >
+                    <span className="text-fg-muted">
+                      Playing as guest. <span className="text-fg">Create an account</span> to keep your chips.
+                    </span>
+                    <span aria-hidden className="text-fg-muted">
+                      →
+                    </span>
+                  </Link>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </motion.section>
           <DailyClaim />
         </div>
 
-        <AnimatePresence>
-          {me.user.isGuest && (
-            <motion.div {...fadeUp} className="mt-3">
-              <Link
-                href="/sign-up"
-                className="flex items-center justify-between rounded-[var(--radius-card)] px-5 py-4 text-[14px] transition-colors hairline hover:border-hairline-strong"
-              >
-                <span className="text-fg-muted">
-                  Playing as guest. <span className="text-fg">Create an account</span> to keep your chips.
-                </span>
-                <span aria-hidden className="text-fg-muted">
-                  →
-                </span>
-              </Link>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        <h2 className="mt-16 text-[13px] font-medium uppercase tracking-[0.08em] text-fg-muted">Games</h2>
+        <h2 className="mt-6 text-[11px] font-medium uppercase tracking-[0.08em] text-fg-muted">Games</h2>
         <motion.ul
           initial="hidden"
           animate="visible"
           variants={{ visible: { transition: { staggerChildren: 0.04 } } }}
-          className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3"
+          className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-3"
         >
           {GAME_IDS.map((id) => {
             const game = GAMES[id];
@@ -77,7 +78,7 @@ export function Lobby() {
                 <motion.div whileTap={tap} transition={tapTransition}>
                   <Link
                     href={`/play/${id}`}
-                    className="group flex aspect-[4/3] flex-col justify-between rounded-[var(--radius-card)] bg-surface p-4 transition-colors hairline hover:border-hairline-strong sm:p-5"
+                    className="group flex h-full min-h-32 flex-col justify-between rounded-[var(--radius-card)] bg-surface p-4 transition-colors hairline hover:border-hairline-strong sm:min-h-36 sm:p-5 xl:min-h-44"
                   >
                     <div className="flex items-start justify-between">
                       <span className="text-fg-muted transition-colors group-hover:text-fg">

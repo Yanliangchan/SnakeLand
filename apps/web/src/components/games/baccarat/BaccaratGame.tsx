@@ -10,7 +10,7 @@ import {
   type BaccaratTableDTO,
   type RevealedShoeDTO,
 } from "@snakeland/shared";
-import { GameShell } from "@/components/GameShell";
+import { GameShell, PanelSection } from "@/components/GameShell";
 import { Button } from "@/components/ui";
 import { ApiError } from "@/lib/api";
 import { baccaratApi } from "@/lib/baccarat-api";
@@ -137,15 +137,17 @@ export function BaccaratGame() {
                 </motion.p>
               )}
             </AnimatePresence>
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <ChipSelector state={spots} disabled={pending} />
-              <div className="flex items-center gap-2">
-                <div className="mr-auto flex flex-col sm:mr-2 sm:items-end">
-                  <span className="text-[12px] text-fg-muted">Total bet</span>
-                  <span className="text-[17px] font-semibold tabular">{spots.total.toLocaleString()}</span>
-                </div>
+            <div className="flex flex-col gap-4 @4xl:flex-row @4xl:items-end @4xl:gap-6">
+              <PanelSection label="Chip value" className="@4xl:min-w-72 @4xl:flex-1">
+                <ChipSelector state={spots} disabled={pending} />
+              </PanelSection>
+              <PanelSection label="Total bet">
+                <span className="text-[22px] font-semibold leading-none tracking-[-0.02em] tabular">{spots.total.toLocaleString()}</span>
+              </PanelSection>
+              <div className="grid grid-cols-[auto_1fr] gap-2 @4xl:w-64">
                 <Button
-                  variant="ghost"
+                  size="lg"
+                  variant="secondary"
                   disabled={pending || spots.total === 0}
                   onClick={() => {
                     spots.clear();
@@ -154,7 +156,7 @@ export function BaccaratGame() {
                 >
                   Clear
                 </Button>
-                <Button className="min-w-28 sm:min-w-36" onClick={deal} loading={pending} disabled={!table || spots.total === 0}>
+                <Button size="lg" onClick={deal} loading={pending} disabled={!table || spots.total === 0}>
                   {round ? "Deal again" : "Deal"}
                 </Button>
               </div>
@@ -165,7 +167,7 @@ export function BaccaratGame() {
         {table ? (
           <BaccaratFelt table={table} round={round} spots={spots} canBet={!pending} onSpot={placeOn} onFairness={() => setFairOpen(true)} />
         ) : (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }} className="min-h-[460px] rounded-[var(--radius-card)] bg-surface hairline sm:min-h-[520px]" />
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }} className="h-full" />
         )}
       </GameShell>
       {table && (

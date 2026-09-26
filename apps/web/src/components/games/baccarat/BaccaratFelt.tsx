@@ -33,7 +33,7 @@ function Side({
       <span className={cn("text-[12px] font-medium uppercase tracking-[0.08em] transition-colors", won ? "text-fg" : "text-fg-disabled")}>
         {label}
       </span>
-      <div className="flex min-h-[92px] items-center sm:min-h-[112px]">{cards && <CardRow cards={cards} baseSeq={0} />}</div>
+      <div className="flex min-h-[clamp(68px,15cqh,132px)] items-center">{cards && <CardRow cards={cards} baseSeq={0} />}</div>
       <div className="h-7">
         <AnimatePresence mode="wait">
           {total !== null && (
@@ -77,11 +77,15 @@ export function BaccaratFelt({
     : null;
 
   return (
-    <div className="relative flex min-h-[460px] flex-col gap-5 rounded-[var(--radius-card)] bg-surface px-4 py-5 hairline sm:min-h-[520px] sm:px-8 sm:py-6">
+    <div className="relative flex h-full min-h-[420px] flex-col gap-3 px-3 py-3 sm:gap-4 sm:px-6 sm:py-4">
       <div className="flex items-start justify-between gap-4">
-        <div className="min-h-[105px] overflow-hidden sm:min-h-[113px]">
-          <Road road={table.road} />
-        </div>
+        <AnimatePresence>
+          {table.road.length > 0 && (
+            <motion.div key="road" {...fade} className="overflow-hidden rounded-[10px] bg-bg/60 p-2 hairline">
+              <Road road={table.road} />
+            </motion.div>
+          )}
+        </AnimatePresence>
         <div className="flex flex-col items-end gap-2">
           <button
             onClick={onFairness}
@@ -103,12 +107,12 @@ export function BaccaratFelt({
         </div>
       </div>
 
-      <div className="flex items-start justify-center gap-6 sm:gap-16">
+      <div className="flex flex-1 items-center justify-center gap-4 sm:gap-16">
         <Side label="Player" cards={round?.player ?? null} total={round?.playerTotal ?? null} won={round?.winner === "player"} />
         <Side label="Banker" cards={round?.banker ?? null} total={round?.bankerTotal ?? null} won={round?.winner === "banker"} />
       </div>
 
-      <div className="grid min-h-[52px] place-items-center">
+      <div className="grid min-h-[52px] shrink-0 place-items-center">
         <AnimatePresence mode="wait">
           {round ? (
             <motion.div key={round.id} {...fadeUp} className="flex flex-col items-center gap-1">
@@ -130,7 +134,7 @@ export function BaccaratFelt({
         </AnimatePresence>
       </div>
 
-      <div className="mt-auto grid grid-cols-[1fr_1.5fr_1fr_1.5fr_1fr] gap-1.5 sm:gap-2">
+      <div className="grid shrink-0 grid-cols-[1fr_1.5fr_1fr_1.5fr_1fr] gap-1.5 sm:gap-2">
         {SPOTS.map((spot) => {
           const returned = round?.returns[spot.id];
           const hadBet = (round?.bets[spot.id] ?? 0) > 0;
@@ -144,7 +148,7 @@ export function BaccaratFelt({
               onClick={() => onSpot(spot.id)}
               aria-label={`Bet on ${spot.label}`}
               className={cn(
-                "relative flex h-24 flex-col items-center justify-between rounded-[12px] px-1 py-2 transition-colors hairline sm:h-28",
+                "relative flex h-[clamp(80px,16cqh,120px)] flex-col items-center justify-between rounded-[12px] bg-bg/40 px-1 py-2 transition-colors hairline",
                 canBet && "hover:border-hairline-strong hover:bg-elevated/40",
                 won && "border-win/50 bg-win/5",
                 lost && "opacity-60",

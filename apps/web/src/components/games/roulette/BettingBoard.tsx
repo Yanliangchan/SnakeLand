@@ -8,7 +8,14 @@ import { useMedia } from "@/lib/use-media";
 import { SpotStack, type SpotChipsState } from "../shared/SpotChips";
 import { HORIZONTAL, VERTICAL, type BoardItem } from "./layout";
 
-const TONE_BG = { red: "bg-[#4A4A4A]", black: "bg-[#161616]", zero: "bg-transparent", plain: "bg-transparent" } as const;
+const TONE_BG = {
+  red: "bg-table-red",
+  black: "bg-table-black",
+  zero: "bg-table-green",
+  plain: "bg-elevated/40",
+} as const;
+/** Outside bets that carry their pocket colour. */
+const OUTSIDE_TONE: Record<string, string> = { red: "bg-table-red", black: "bg-table-black" };
 
 export function BettingBoard({
   spots,
@@ -35,11 +42,16 @@ export function BettingBoard({
     height: `${(it.h / board.height) * 100}%`,
   });
   const chipSize = wide ? 26 : 22;
+  // Fit the board to the stage: as wide as possible without overflowing the height left under the wheel.
+  const ratio = wide ? board.width / (board.height * 0.95) : board.width / (board.height * 0.62);
+  // On phones it never shrinks below a tappable 260px: the stage scrolls instead.
+  const fit = `(100cqh - var(--top, 0px) - 44px) * ${ratio.toFixed(3)}`;
+  const width = wide ? `min(100cqw - 24px, ${fit})` : `min(100cqw - 24px, clamp(260px, ${fit}, 380px))`;
 
   return (
     <div
-      className={cn("relative mx-auto w-full select-none", !wide && "max-w-[340px]")}
-      style={{ aspectRatio: wide ? `${board.width} / ${board.height * 0.95}` : `${board.width} / ${board.height * 0.62}` }}
+      className="relative mx-auto select-none overflow-hidden rounded-[10px] ring-1 ring-hairline"
+      style={{ width, aspectRatio: `${ratio}` }}
       onMouseLeave={() => setHover(null)}
     >
       {board.items
@@ -61,16 +73,17 @@ export function BettingBoard({
               aria-label={`Bet ${it.label}`}
               className={cn(
                 "absolute grid place-items-center border border-[rgba(255,255,255,0.08)] text-[11px] font-semibold tabular transition-colors sm:text-[13px]",
-                TONE_BG[it.tone ?? "plain"],
+                OUTSIDE_TONE[it.betId] ?? TONE_BG[it.tone ?? "plain"],
+                "text-fg",
                 it.tone === "zero" && "text-fg",
                 !disabled && "hover:brightness-125",
-                (lit || (hover === it.betId && def.kind !== "straight")) && "!bg-fg/15",
-                outsideWin && "!bg-win/10",
+                (lit || (hover === it.betId && def.kind !== "straight")) && "z-[1] ring-2 ring-inset ring-fg/80",
+                outsideWin && "z-[1] ring-2 ring-inset ring-win",
               )}
               style={pct(it)}
             >
               <span className={cn(vertical && "-rotate-90 whitespace-nowrap")}>
-                {it.betId === "red" ? <span className="inline-block size-2.5 rotate-45 bg-[#6B6B6B] align-middle" aria-label="Red" /> : it.betId === "black" ? <span className="inline-block size-2.5 rotate-45 bg-[#0A0A0A] align-middle ring-1 ring-fg/30" aria-label="Black" /> : it.label}
+                {it.label}
               </span>
               <AnimatePresence>
                 {isWin && (

@@ -205,7 +205,7 @@ export function BlackjackGame() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.2 }}
-            className="min-h-[460px] rounded-[var(--radius-card)] bg-surface hairline sm:min-h-[520px]"
+            className="h-full"
           />
         )}
       </GameShell>

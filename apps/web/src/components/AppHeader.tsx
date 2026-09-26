@@ -22,7 +22,7 @@ export function AppHeader() {
   const { me } = useSession();
   return (
     <header className="sticky top-0 z-20 border-b border-hairline bg-bg/80 backdrop-blur-xl">
-      <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-4 sm:px-6">
+      <div className="mx-auto flex h-14 max-w-[1440px] items-center justify-between px-3 sm:h-16 sm:px-4 lg:px-6">
         <Wordmark />
         {me && (
           <div className="flex items-center gap-3">

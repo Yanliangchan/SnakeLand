@@ -5,8 +5,8 @@ import { useEffect, useRef } from "react";
 import { WHEEL_ORDER, pocketColor } from "@snakeland/shared";
 
 const STEP = 360 / WHEEL_ORDER.length;
-const FILL = { red: "#5A5A5A", black: "#161616", zero: "#FAFAFA" } as const;
-const TEXT = { red: "#FAFAFA", black: "#FAFAFA", zero: "#0A0A0A" } as const;
+const FILL = { red: "var(--color-table-red)", black: "var(--color-table-black)", zero: "var(--color-table-green)" } as const;
+const TEXT = { red: "#FAFAFA", black: "#FAFAFA", zero: "#FAFAFA" } as const;
 
 function wedge(i: number, r1: number, r2: number) {
   const a0 = ((i - 0.5) * STEP - 90) * (Math.PI / 180);

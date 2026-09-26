@@ -47,12 +47,13 @@ export type ChipSlip = ReturnType<typeof useChipSlip>;
 
 export function ChipTray({ slip, disabled, className }: { slip: ChipSlip; disabled?: boolean; className?: string }) {
   return (
-    <div className={cn("flex items-center justify-between gap-1.5 sm:justify-start sm:gap-2", className)}>
+    <div className={cn("grid max-w-[360px] grid-cols-6 place-items-center gap-1", className)}>
       {CHIP_VALUES.map((v) => (
         <Chip
           key={slip.tray[v]}
           chipId={slip.tray[v]}
           value={v}
+          size={40}
           disabled={disabled || v > slip.room}
           onClick={() => slip.add(v)}
         />
@@ -122,17 +123,12 @@ export function StakeSummary({ slip, limit, disabled }: { slip: ChipSlip; limit:
   return (
     <div className="flex items-center gap-3">
       <ChipStack chips={slip.chips} size={32} step={4} />
-      <div className="flex min-w-0 flex-col">
-        <span className="text-[12px] text-fg-muted">Bet</span>
-        <span className="text-[17px] font-semibold tabular">{slip.amount.toLocaleString()}</span>
-      </div>
+      <span className="min-w-0 text-[22px] font-semibold tracking-[-0.02em] tabular">{slip.amount.toLocaleString()}</span>
       <div className="ml-auto flex gap-1.5">
-        {/* Halve/double stay off the narrowest screens, where chips + Clear cover it. */}
-        <Quick className="hidden sm:block" onClick={() => slip.set(slip.amount / 2)} disabled={disabled || slip.amount === 0}>
+        <Quick onClick={() => slip.set(slip.amount / 2)} disabled={disabled || slip.amount === 0}>
           ½
         </Quick>
         <Quick
-          className="hidden sm:block"
           onClick={() => slip.set(slip.amount * 2)}
           disabled={disabled || slip.amount === 0 || slip.amount * 2 > limit}>
           2×

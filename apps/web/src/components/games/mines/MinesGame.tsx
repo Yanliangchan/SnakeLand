@@ -14,7 +14,7 @@ import {
   type MinesRoundDTO,
   type MinesUpdateDTO,
 } from "@snakeland/shared";
-import { GameShell } from "@/components/GameShell";
+import { GameShell, PanelSection } from "@/components/GameShell";
 import { Button, WinCelebration } from "@/components/ui";
 import { ApiError } from "@/lib/api";
 import { cn } from "@/lib/cn";
@@ -52,7 +52,7 @@ function message(e: unknown) {
 function MinesStepper({ value, onChange, disabled }: { value: number; onChange: (v: number) => void; disabled: boolean }) {
   const btn = "grid size-9 place-items-center rounded-[10px] text-fg-muted transition-colors hairline hover:text-fg disabled:opacity-40";
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-wrap items-center justify-between gap-2">
       <div className="flex items-center gap-1.5">
         <motion.button whileTap={tap} transition={tapTransition} className={btn} disabled={disabled || value <= MINES_MIN} onClick={() => onChange(value - 1)} aria-label="Fewer mines">
           −
@@ -65,7 +65,7 @@ function MinesStepper({ value, onChange, disabled }: { value: number; onChange: 
           +
         </motion.button>
       </div>
-      <div className="hidden gap-1 lg:flex">
+      <div className="flex gap-1">
         {MINE_PRESETS.map((p) => (
           <motion.button
             key={p}
@@ -231,40 +231,47 @@ export function MinesGame() {
             </AnimatePresence>
             <AnimatePresence mode="wait" initial={false}>
               {playing ? (
-                <motion.div key="playing" {...fadeUp} className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:justify-end">
-                  <p className="col-span-2 text-[13px] text-fg-muted sm:mr-auto">
-                    {round.picks.length === 0
-                      ? "Pick a tile. Cash out whenever you like."
-                      : `${round.picks.length} safe · next pick pays ${round.nextMultiplierX100 ? formatX100(round.nextMultiplierX100) : "—"}`}
-                  </p>
-                  <Button variant="secondary" onClick={pickRandom} disabled={pending}>
-                    Random
-                  </Button>
-                  <Button className="sm:min-w-44" onClick={cashOut} disabled={pending || round.picks.length === 0}>
-                    Cash out {round.picks.length > 0 ? cashValue.toLocaleString() : ""}
-                  </Button>
-                </motion.div>
-              ) : (
-                <motion.div key="idle" {...fadeUp} className="flex flex-col gap-3">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <ChipTray slip={slip} disabled={pending || !loaded} />
-                    <MinesStepper value={mines} onChange={setMines} disabled={pending || !loaded} />
+                <motion.div key="playing" {...fadeUp} className="flex flex-col gap-3 @4xl:flex-row @4xl:items-center">
+                  <div className="rounded-[12px] bg-bg/60 px-4 py-3 hairline @4xl:flex-1">
+                    <p className="text-[12px] text-fg-muted">
+                      {round.picks.length === 0 ? "Pick a tile. Cash out whenever you like." : `${round.picks.length} safe`}
+                    </p>
+                    <p className="text-[15px] font-semibold tabular">
+                      Next pick {round.nextMultiplierX100 ? formatX100(round.nextMultiplierX100) : "—"}
+                    </p>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <div className="min-w-0 flex-1">
-                      <StakeSummary slip={slip} limit={Math.min(INSTANT_BET_LIMITS.max, balance)} disabled={pending} />
-                    </div>
-                    <Button className="min-w-28 sm:min-w-36" onClick={start} loading={pending} disabled={!loaded || slip.amount < INSTANT_BET_LIMITS.min}>
-                      Bet
+                  <div className="grid grid-cols-[1fr_2fr] gap-2 @4xl:w-80">
+                    <Button variant="secondary" size="lg" onClick={pickRandom} disabled={pending}>
+                      Random
+                    </Button>
+                    <Button size="lg" onClick={cashOut} disabled={pending || round.picks.length === 0}>
+                      Cash out {round.picks.length > 0 ? cashValue.toLocaleString() : ""}
                     </Button>
                   </div>
+                </motion.div>
+              ) : (
+                <motion.div key="idle" {...fadeUp} className="flex flex-col gap-4 @4xl:flex-row @4xl:items-end @4xl:gap-6">
+                  <PanelSection label="Bet" className="flex flex-col gap-2 @4xl:min-w-72 @4xl:flex-1">
+                    <StakeSummary slip={slip} limit={Math.min(INSTANT_BET_LIMITS.max, balance)} disabled={pending} />
+                    <ChipTray slip={slip} disabled={pending || !loaded} />
+                  </PanelSection>
+                  <PanelSection label="Mines">
+                    <MinesStepper value={mines} onChange={setMines} disabled={pending || !loaded} />
+                  </PanelSection>
+                  <Button size="lg" block className="@4xl:w-44" onClick={start} loading={pending} disabled={!loaded || slip.amount < INSTANT_BET_LIMITS.min}>
+                    Bet
+                  </Button>
                 </motion.div>
               )}
             </AnimatePresence>
           </div>
         }
       >
-        <div className="mx-auto flex w-full max-w-[480px] flex-col gap-5">
+        <div
+          className="mx-auto flex h-full w-[var(--board)] flex-col justify-center gap-3 py-3 sm:gap-4 sm:py-5"
+            // The grid is square: as large as the stage allows in both directions.
+          style={{ "--board": "min(100cqw - 24px, 100cqh - 150px, 580px)" } as React.CSSProperties}
+        >
           <div className="flex items-center justify-between gap-3">
             <RecentMultipliers items={recent} />
             <button
@@ -315,7 +322,7 @@ export function MinesGame() {
             </AnimatePresence>
           </div>
 
-          <div className="grid grid-cols-5 gap-2 sm:gap-2.5">
+          <div className="grid aspect-square w-full grid-cols-5 gap-[1.5%]">
             {states.map((s, i) => (
               <Tile
                 key={i}

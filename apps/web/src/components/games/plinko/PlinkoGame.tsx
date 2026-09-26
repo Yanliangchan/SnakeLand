@@ -13,7 +13,7 @@ import {
   type PlinkoDropDTO,
   type PlinkoRisk,
 } from "@snakeland/shared";
-import { GameShell } from "@/components/GameShell";
+import { GameShell, PanelSection } from "@/components/GameShell";
 import { Button, Toggle, WinCelebration } from "@/components/ui";
 import { ApiError } from "@/lib/api";
 import { cn } from "@/lib/cn";
@@ -50,7 +50,7 @@ function Segmented<T extends string>({
   disabled?: boolean;
 }) {
   return (
-    <div className="flex rounded-[10px] p-0.5 hairline" role="radiogroup">
+    <div className="flex h-9 rounded-[10px] p-0.5 hairline" role="radiogroup">
       {options.map((o) => (
         <button
           key={o}
@@ -59,7 +59,7 @@ function Segmented<T extends string>({
           disabled={disabled}
           onClick={() => onChange(o)}
           className={cn(
-            "relative h-8 min-w-12 rounded-[8px] px-2.5 text-[12px] font-medium transition-colors disabled:opacity-40",
+            "relative h-8 min-w-12 flex-1 rounded-[8px] px-2.5 text-[12px] font-medium transition-colors disabled:opacity-40",
             o === value ? "text-bg" : "text-fg-muted hover:text-fg",
           )}
         >
@@ -233,51 +233,62 @@ export function PlinkoGame() {
                 </motion.p>
               )}
             </AnimatePresence>
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <ChipTray slip={slip} disabled={auto} />
-              <div className="flex items-center justify-between gap-3">
-                <Segmented options={PLINKO_RISKS} value={risk} onChange={setRisk} label={(r) => RISK_LABEL[r]} disabled={inFlight} />
-                <div className="flex items-center gap-1.5">
-                  <motion.button
-                    whileTap={tap}
-                    transition={tapTransition}
-                    disabled={inFlight || rows <= PLINKO_ROWS_MIN}
-                    onClick={() => setRows((r) => r - 1)}
-                    aria-label="Fewer rows"
-                    className="grid size-8 place-items-center rounded-[8px] text-fg-muted hairline hover:text-fg disabled:opacity-40"
-                  >
-                    −
-                  </motion.button>
-                  <span className="w-14 text-center text-[13px] font-medium tabular">{rows} rows</span>
-                  <motion.button
-                    whileTap={tap}
-                    transition={tapTransition}
-                    disabled={inFlight || rows >= PLINKO_ROWS_MAX}
-                    onClick={() => setRows((r) => r + 1)}
-                    aria-label="More rows"
-                    className="grid size-8 place-items-center rounded-[8px] text-fg-muted hairline hover:text-fg disabled:opacity-40"
-                  >
-                    +
-                  </motion.button>
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="min-w-0 flex-1">
+            <div className="flex flex-col gap-4 @4xl:flex-row @4xl:items-end @4xl:gap-6">
+              <PanelSection label="Bet" className="flex flex-col gap-2 @4xl:min-w-72 @4xl:flex-1">
                 <StakeSummary slip={slip} limit={limit} disabled={auto} />
+                <ChipTray slip={slip} disabled={auto} />
+              </PanelSection>
+              <div className="grid grid-cols-[1fr_auto] gap-3 @4xl:flex @4xl:gap-6">
+                <PanelSection label="Risk">
+                  <Segmented options={PLINKO_RISKS} value={risk} onChange={setRisk} label={(r) => RISK_LABEL[r]} disabled={inFlight} />
+                </PanelSection>
+                <PanelSection label="Rows">
+                  <div className="flex h-9 items-center gap-1">
+                    <motion.button
+                      whileTap={tap}
+                      transition={tapTransition}
+                      disabled={inFlight || rows <= PLINKO_ROWS_MIN}
+                      onClick={() => setRows((r) => r - 1)}
+                      aria-label="Fewer rows"
+                      className="grid size-8 place-items-center rounded-[8px] text-fg-muted hairline hover:text-fg disabled:opacity-40"
+                    >
+                      −
+                    </motion.button>
+                    <span className="w-8 text-center text-[15px] font-semibold tabular">{rows}</span>
+                    <motion.button
+                      whileTap={tap}
+                      transition={tapTransition}
+                      disabled={inFlight || rows >= PLINKO_ROWS_MAX}
+                      onClick={() => setRows((r) => r + 1)}
+                      aria-label="More rows"
+                      className="grid size-8 place-items-center rounded-[8px] text-fg-muted hairline hover:text-fg disabled:opacity-40"
+                    >
+                      +
+                    </motion.button>
+                  </div>
+                </PanelSection>
               </div>
-              <label className="flex items-center gap-2 text-[13px] text-fg-muted">
-                <span className="hidden sm:inline">Auto</span>
-                <Toggle label="Auto drop" checked={auto} onChange={(on) => (on && slip.amount < INSTANT_BET_LIMITS.min ? setError(`Minimum bet is ${INSTANT_BET_LIMITS.min}.`) : setAuto(on))} />
-              </label>
-              <Button className="min-w-24 sm:min-w-32" onClick={drop} disabled={auto || slip.amount < INSTANT_BET_LIMITS.min}>
-                Drop
-              </Button>
+              <div className="flex items-center gap-3 @4xl:w-56">
+                <label className="flex items-center gap-2 text-[13px] text-fg-muted">
+                  Auto
+                  <Toggle
+                    label="Auto drop"
+                    checked={auto}
+                    onChange={(on) => (on && slip.amount < INSTANT_BET_LIMITS.min ? setError(`Minimum bet is ${INSTANT_BET_LIMITS.min}.`) : setAuto(on))}
+                  />
+                </label>
+                <Button size="lg" className="flex-1" onClick={drop} disabled={auto || slip.amount < INSTANT_BET_LIMITS.min}>
+                  Drop
+                </Button>
+              </div>
             </div>
           </div>
         }
       >
-        <div className="mx-auto flex w-full max-w-[640px] flex-col gap-4">
+        <div
+          className="mx-auto flex h-full w-[var(--board)] flex-col justify-center gap-2 py-3 sm:gap-3"
+          style={{ "--board": "min(100cqw - 24px, (100cqh - 110px) * 1.18, 760px)" } as React.CSSProperties}
+        >
           <div className="flex items-center justify-between gap-3">
             <RecentMultipliers items={recent} />
             <button

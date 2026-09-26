@@ -60,7 +60,7 @@ export function CardRow({ cards, baseSeq }: { cards: DealtCardDTO[]; baseSeq: nu
             key={c.seq}
             card={c.code}
             i={Math.max(0, c.seq - baseSeq)}
-            className={idx > 0 ? "-ml-10 sm:-ml-12" : undefined}
+            className={idx > 0 ? "-ml-[clamp(30px,6.4cqh,56px)]" : undefined}
           />
         ))}
       </AnimatePresence>

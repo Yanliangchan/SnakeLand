@@ -27,7 +27,8 @@ export function PlayingCard({ card, i, className }: { card: Card | null; i: numb
       initial="hidden"
       animate="visible"
       exit="exit"
-      className={cn("relative h-[92px] w-[66px] shrink-0 [perspective:800px] sm:h-[112px] sm:w-[80px]", className)}
+      // Height follows the game stage (a size container), clamped for tiny and huge screens.
+      className={cn("relative aspect-[5/7] h-[clamp(68px,15cqh,132px)] shrink-0 [perspective:800px]", className)}
       role="img"
       aria-label={card ? `${RANK_NAME[rank!] ?? rank} of ${SUIT_NAME[suit!]}` : "Face-down card"}
     >
@@ -40,13 +41,13 @@ export function PlayingCard({ card, i, className }: { card: Card | null; i: numb
         {card && (
           <div
             className="absolute inset-0 flex flex-col justify-between rounded-[10px] bg-fg p-2 font-semibold shadow-[0_2px_10px_rgba(0,0,0,0.55)] [backface-visibility:hidden] tabular"
-            style={{ color: red ? "#6B6B6B" : "#0A0A0A" }}
+            style={{ color: red ? "var(--color-table-red)" : "#0A0A0A" }}
           >
             <span className="flex flex-col items-start leading-none">
-              <span className="text-[16px] sm:text-[18px]">{RANK_LABEL[rank!] ?? rank}</span>
-              <span className="mt-0.5 text-[12px] sm:text-[13px]">{SUIT_GLYPH[suit!]}</span>
+              <span className="text-[clamp(14px,2.6cqh,22px)]">{RANK_LABEL[rank!] ?? rank}</span>
+              <span className="mt-0.5 text-[clamp(11px,1.9cqh,16px)]">{SUIT_GLYPH[suit!]}</span>
             </span>
-            <span className="self-end text-[24px] leading-none sm:text-[28px]">{SUIT_GLYPH[suit!]}</span>
+            <span className="self-end text-[clamp(20px,4cqh,34px)] leading-none">{SUIT_GLYPH[suit!]}</span>
           </div>
         )}
         <div className="absolute inset-0 rounded-[10px] bg-elevated shadow-[0_2px_10px_rgba(0,0,0,0.55)] hairline [backface-visibility:hidden] [transform:rotateY(180deg)] [background-image:repeating-linear-gradient(45deg,rgba(255,255,255,0.045)_0_2px,transparent_2px_8px)]" />

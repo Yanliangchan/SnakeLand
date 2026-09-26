@@ -12,25 +12,30 @@ export interface GameShellProps {
   /** Short table label shown next to the title, e.g. "Table 3F2A". */
   tableLabel?: string;
   /**
-   * Identity of the current table. Changing it cross-fades the felt: the old
+   * Identity of the current table. Changing it cross-fades the stage: the old
    * table fully exits before the new one enters.
    */
   tableId: string;
   onNextTable?: () => void;
-  /** Bottom bet control (BetSlip etc). Rendered outside the keyed felt so it never remounts on table switch. */
+  /** Bet controls. Rendered outside the keyed stage so they never remount on table switch. */
   controls: React.ReactNode;
   /** The felt/board: the only part that differs per game. */
   children: React.ReactNode;
 }
 
-/** Shared layout for all six games: fixed top bar, swappable felt, fixed bottom controls. */
+/**
+ * Shared layout for every game: a top bar, then two panels that always fit
+ * the screen. The stage (the game itself) takes the remaining space; the
+ * control panel sits on the left from `lg` up and at the bottom below that.
+ * The stage is a size container, so games scale with `cqw`/`cqh` units.
+ */
 export function GameShell({ title, tableLabel, tableId, onNextTable, controls, children }: GameShellProps) {
   const { me } = useSession();
 
   return (
-    <div className="flex min-h-dvh flex-col">
-      <header className="fixed inset-x-0 top-0 z-20 border-b border-hairline bg-bg/80 backdrop-blur-xl">
-        <div className="mx-auto flex h-16 max-w-5xl items-center justify-between gap-4 px-4 sm:px-6">
+    <div className="flex h-dvh flex-col">
+      <header className="shrink-0 border-b border-hairline bg-bg">
+        <div className="mx-auto flex h-14 w-full max-w-[1440px] items-center justify-between gap-4 px-3 sm:h-16 sm:px-4">
           <div className="flex min-w-0 items-center gap-3">
             <motion.div whileTap={tap} transition={tapTransition}>
               <Link
@@ -55,7 +60,7 @@ export function GameShell({ title, tableLabel, tableId, onNextTable, controls, c
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
             {onNextTable && (
               <motion.button
                 whileTap={tap}
@@ -72,7 +77,10 @@ export function GameShell({ title, tableLabel, tableId, onNextTable, controls, c
             )}
             {me && (
               <>
-                <BalanceCounter value={me.wallet.balance} className="text-[15px] font-semibold" />
+                <div className="flex h-9 items-center gap-1.5 rounded-[var(--radius-ui)] bg-surface px-3 hairline">
+                  <BalanceCounter value={me.wallet.balance} className="text-[14px] font-semibold" />
+                  <span className="hidden text-[12px] text-fg-muted sm:inline">chips</span>
+                </div>
                 <Link href="/settings" aria-label="Account and settings">
                   <Avatar name={me.user.name} />
                 </Link>
@@ -82,26 +90,38 @@ export function GameShell({ title, tableLabel, tableId, onNextTable, controls, c
         </div>
       </header>
 
-      <main className="relative mx-auto flex w-full max-w-5xl flex-1 items-center justify-center px-4 pb-44 pt-24 sm:px-6">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={tableId}
-            initial={tableSwitch.initial}
-            animate={tableSwitch.animate}
-            exit={tableSwitch.exit}
-            transition={tableSwitch.transition}
-            className="w-full"
-          >
-            {children}
-          </motion.div>
-        </AnimatePresence>
-      </main>
+      <div className="mx-auto flex min-h-0 w-full max-w-[1440px] flex-1 flex-col gap-2 p-2 sm:gap-3 sm:p-3 lg:flex-row-reverse lg:gap-4 lg:p-4">
+        {/* Stage */}
+        <main className="relative min-h-0 flex-1 overflow-hidden rounded-[var(--radius-card)] bg-surface hairline [container-type:size]">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={tableId}
+              initial={tableSwitch.initial}
+              animate={tableSwitch.animate}
+              exit={tableSwitch.exit}
+              transition={tableSwitch.transition}
+              className="h-full w-full overflow-y-auto overflow-x-hidden"
+            >
+              {children}
+            </motion.div>
+          </AnimatePresence>
+        </main>
 
-      <footer className="fixed inset-x-0 bottom-0 z-20 border-t border-hairline bg-bg/85 backdrop-blur-xl">
-        <div className="mx-auto max-w-5xl px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-6">
+        {/* Controls */}
+        <aside className="@container shrink-0 rounded-[var(--radius-card)] bg-surface p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] hairline sm:p-4 lg:w-[340px] lg:overflow-y-auto">
           {controls}
-        </div>
-      </footer>
+        </aside>
+      </div>
     </div>
+  );
+}
+
+/** Small labelled section used inside the control panel. */
+export function PanelSection({ label, children, className }: { label?: string; children: React.ReactNode; className?: string }) {
+  return (
+    <section className={className}>
+      {label && <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.08em] text-fg-muted">{label}</p>}
+      {children}
+    </section>
   );
 }

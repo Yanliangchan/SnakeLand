@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { BLACKJACK_RULES, type BlackjackAction, type BlackjackRoundDTO } from "@snakeland/shared";
 import { Button } from "@/components/ui";
 import { fadeUp } from "@/lib/motion";
+import { PanelSection } from "@/components/GameShell";
 import { ChipTray, type ChipSlip } from "../shared/ChipSlip";
 
 export type Mode = "loading" | "bet" | "insurance" | "play" | "settled";
@@ -17,7 +18,7 @@ const ACTIONS: Array<{ action: BlackjackAction; label: string; key: string }> = 
 
 function Kbd({ children }: { children: React.ReactNode }) {
   return (
-    <kbd className="hidden rounded-[4px] px-1 text-[10px] font-medium text-current opacity-50 hairline sm:inline">
+    <kbd className="hidden rounded-[4px] px-1 text-[10px] font-medium text-current opacity-50 hairline lg:inline">
       {children}
     </kbd>
   );
@@ -54,13 +55,21 @@ export function BetControls({
       </AnimatePresence>
       <AnimatePresence mode="wait" initial={false}>
         {mode === "bet" && (
-          <motion.div key="bet" {...fadeUp} className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <ChipTray slip={slip} disabled={pending} />
-            <div className="flex items-center gap-2">
-              <Button variant="ghost" onClick={slip.clear} disabled={slip.amount === 0 || pending}>
+          <motion.div key="bet" {...fadeUp} className="flex flex-col gap-4 @4xl:flex-row @4xl:items-end @4xl:gap-6">
+            <PanelSection label="Bet" className="flex flex-col gap-2 @4xl:min-w-72 @4xl:flex-1">
+              <div className="flex items-baseline justify-between">
+                <span className="text-[22px] font-semibold tracking-[-0.02em] tabular">{slip.amount.toLocaleString()}</span>
+                <span className="text-[12px] text-fg-muted tabular">
+                  {BLACKJACK_RULES.minBet}–{BLACKJACK_RULES.maxBet.toLocaleString()}
+                </span>
+              </div>
+              <ChipTray slip={slip} disabled={pending} />
+            </PanelSection>
+            <div className="grid grid-cols-[auto_1fr] gap-2 @4xl:w-64">
+              <Button variant="secondary" size="lg" onClick={slip.clear} disabled={slip.amount === 0 || pending}>
                 Clear
               </Button>
-              <Button className="flex-1 sm:flex-none sm:min-w-36" onClick={onDeal} loading={pending} disabled={slip.amount < BLACKJACK_RULES.minBet}>
+              <Button size="lg" onClick={onDeal} loading={pending} disabled={slip.amount < BLACKJACK_RULES.minBet}>
                 Deal <Kbd>↵</Kbd>
               </Button>
             </div>
@@ -68,12 +77,12 @@ export function BetControls({
         )}
 
         {mode === "insurance" && round && (
-          <motion.div key="insurance" {...fadeUp} className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <motion.div key="insurance" {...fadeUp} className="flex flex-col gap-3 @4xl:flex-row @4xl:items-center @4xl:justify-between">
             <p className="text-[14px] text-fg-muted">
               Dealer shows an ace. Insurance costs{" "}
               <span className="text-fg tabular">{round.insurance.stake.toLocaleString()}</span>.
             </p>
-            <div className="grid grid-cols-2 gap-2 sm:flex">
+            <div className="grid grid-cols-2 gap-2 @4xl:flex">
               <Button variant="secondary" onClick={() => onAction("no_insurance")} disabled={pending}>
                 No thanks <Kbd>N</Kbd>
               </Button>
@@ -85,12 +94,13 @@ export function BetControls({
         )}
 
         {mode === "play" && round && (
-          <motion.div key="play" {...fadeUp} className="grid grid-cols-4 gap-2 sm:mx-auto sm:flex sm:justify-center">
+          <motion.div key="play" {...fadeUp} className="grid grid-cols-2 gap-2 @md:grid-cols-4 @4xl:mx-auto @4xl:flex @4xl:justify-center">
             {ACTIONS.map(({ action, label, key }) => (
               <Button
                 key={action}
+                size="lg"
                 variant={action === "hit" || action === "stand" ? "primary" : "secondary"}
-                className="sm:min-w-28"
+                className="@4xl:min-w-28"
                 disabled={pending || !round.allowed.includes(action)}
                 onClick={() => onAction(action)}
               >
@@ -101,11 +111,11 @@ export function BetControls({
         )}
 
         {mode === "settled" && (
-          <motion.div key="settled" {...fadeUp} className="grid grid-cols-2 gap-2 sm:flex sm:justify-end">
+          <motion.div key="settled" {...fadeUp} className="grid grid-cols-2 gap-2 @4xl:flex @4xl:justify-end">
             <Button variant="secondary" onClick={onChangeBet} disabled={pending}>
               Change bet
             </Button>
-            <Button className="sm:min-w-40" onClick={onDeal} loading={pending} disabled={slip.amount < BLACKJACK_RULES.minBet}>
+            <Button className="@4xl:min-w-40" onClick={onDeal} loading={pending} disabled={slip.amount < BLACKJACK_RULES.minBet}>
               Deal {slip.amount.toLocaleString()} <Kbd>↵</Kbd>
             </Button>
           </motion.div>

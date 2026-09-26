@@ -52,12 +52,13 @@ export function DailyClaim() {
   }
 
   return (
-    <Card className="flex items-center justify-between gap-4">
+    <Card className="flex h-full items-center justify-between gap-4 md:flex-col md:items-stretch">
       <div>
-        <p className="text-[15px] font-medium">Daily chips</p>
+        <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-fg-muted">Daily chips</p>
+        <p className="mt-1 text-[22px] font-semibold tracking-[-0.02em] tabular">+{DAILY_CLAIM_AMOUNT.toLocaleString()}</p>
         <AnimatePresence mode="wait" initial={false}>
           <motion.p key={countdown ? "wait" : "ready"} {...fadeUp} className="mt-1 text-[13px] text-fg-muted tabular">
-            {countdown ? `Next in ${countdown}` : `${DAILY_CLAIM_AMOUNT.toLocaleString()} free chips, ready now`}
+            {countdown ? `Next in ${countdown}` : "Free chips, ready to claim"}
           </motion.p>
         </AnimatePresence>
         <AnimatePresence>
@@ -68,7 +69,7 @@ export function DailyClaim() {
           )}
         </AnimatePresence>
       </div>
-      <Button variant={countdown ? "secondary" : "primary"} disabled={Boolean(countdown)} loading={pending} onClick={claim}>
+      <Button size="lg" className="md:w-full" variant={countdown ? "secondary" : "primary"} disabled={Boolean(countdown)} loading={pending} onClick={claim}>
         Claim
       </Button>
     </Card>
