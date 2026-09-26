@@ -1,0 +1,74 @@
+"use client";
+
+import { motion } from "framer-motion";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { AppHeader } from "@/components/AppHeader";
+import { Avatar, Button, ButtonLink, Card, Toggle } from "@/components/ui";
+import { fadeUp } from "@/lib/motion";
+import { useSession } from "@/providers/session";
+import { useSettings } from "@/providers/settings";
+
+export function SettingsView() {
+  const router = useRouter();
+  const { me, signOut } = useSession();
+  const { soundOn, setSoundOn, play } = useSettings();
+  const [signingOut, setSigningOut] = useState(false);
+  if (!me) return null;
+
+  return (
+    <div className="min-h-dvh">
+      <AppHeader />
+      <main className="mx-auto max-w-2xl px-4 pb-24 pt-12 sm:px-6">
+        <motion.h1 {...fadeUp} className="text-[32px] font-semibold">
+          Settings
+        </motion.h1>
+
+        <Card className="mt-8 flex items-center gap-4">
+          <Avatar name={me.user.name} className="size-11 text-[14px]" />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[15px] font-medium">{me.user.name}</p>
+            <p className="truncate text-[13px] text-fg-muted">{me.user.isGuest ? "Guest on this device" : me.user.email}</p>
+          </div>
+          {me.user.isGuest && (
+            <ButtonLink href="/sign-up" size="sm">
+              Save progress
+            </ButtonLink>
+          )}
+        </Card>
+
+        <Card className="mt-3 flex items-center justify-between" transition={{ ...fadeUp.transition, delay: 0.05 }}>
+          <div>
+            <p className="text-[15px] font-medium">Sound</p>
+            <p className="mt-0.5 text-[13px] text-fg-muted">Soft clicks, card flips and a chime on wins.</p>
+          </div>
+          <Toggle
+            label="Sound"
+            checked={soundOn}
+            onChange={(on) => {
+              setSoundOn(on);
+              if (on) play("click");
+            }}
+          />
+        </Card>
+
+        <motion.div {...fadeUp} transition={{ ...fadeUp.transition, delay: 0.1 }} className="mt-10">
+          <Button
+            variant="secondary"
+            loading={signingOut}
+            onClick={async () => {
+              setSigningOut(true);
+              await signOut();
+              router.replace("/");
+            }}
+          >
+            {me.user.isGuest ? "Leave guest session" : "Sign out"}
+          </Button>
+          {me.user.isGuest && (
+            <p className="mt-3 text-[13px] text-fg-muted">Guest chips can’t be recovered after you leave.</p>
+          )}
+        </motion.div>
+      </main>
+    </div>
+  );
+}

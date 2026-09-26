@@ -1,0 +1,12 @@
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "build": {
+    "buildCommand": "pnpm install --frozen-lockfile && pnpm --filter @snakeland/web build",
+    "watchPatterns": ["apps/web/**", "packages/shared/**", "pnpm-lock.yaml"]
+  },
+  "deploy": {
+    "startCommand": "pnpm --filter @snakeland/web start",
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 5
+  }
+}
