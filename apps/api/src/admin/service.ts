@@ -39,6 +39,11 @@ export class AdminService {
     throw new GameError(404, "PLAYER_NOT_FOUND", "Player not found");
   }
 
+  /** Drop cached leaderboards after an account-level change. */
+  invalidate() {
+    this.progress.invalidate();
+  }
+
   async audit(action: string, targetUserId: string | null, detail: Record<string, unknown> | null, ip: string) {
     await this.db.insert(adminAudit).values({ action, targetUserId, detail, ip });
   }

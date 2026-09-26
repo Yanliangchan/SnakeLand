@@ -217,7 +217,7 @@ from one IP (or 30 overall). Every action lands in `admin_audit`.
 
 Admins can search players, view full profiles and recent transactions, add/remove/set chips (as `admin_adjust`
 ledger rows), reset the daily claim, rename, suspend (signs out everywhere and blocks sign-in), sign a player out
-everywhere, and delete guests.
+everywhere, and permanently delete a player (typed-name confirmation; the audit log keeps who it was).
 
 ## Security
 

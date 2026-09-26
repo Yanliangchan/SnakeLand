@@ -12,7 +12,8 @@ export interface PurgeReport {
 
 /**
  * Removes data nobody needs any more. Registered accounts and their money
- * records are never touched; guests are removed completely.
+ * records are never touched automatically; guests are removed completely.
+ * Only an admin can delete a registered player (`purgePlayer`).
  */
 export class PurgeService {
   constructor(private readonly db: Db) {}
@@ -26,6 +27,22 @@ export class PurgeService {
       if (found.rows.length === 0) return false;
       await this.deleteUserData(tx, userId);
       return true;
+    });
+  }
+
+  /**
+   * Admin-only: delete any player (guest or registered) and everything they
+   * own, ledger included. Returns who was deleted, or null if not found.
+   */
+  async purgePlayer(userId: string): Promise<{ name: string; email: string; isAnonymous: boolean } | null> {
+    return this.db.transaction(async (tx) => {
+      const found = await tx.execute<{ name: string; email: string; is_anonymous: boolean }>(
+        sql`SELECT name, email, is_anonymous FROM users WHERE id = ${userId} FOR UPDATE`,
+      );
+      const u = found.rows[0];
+      if (!u) return null;
+      await this.deleteUserData(tx, userId);
+      return { name: u.name, email: u.email, isAnonymous: u.is_anonymous };
     });
   }
 

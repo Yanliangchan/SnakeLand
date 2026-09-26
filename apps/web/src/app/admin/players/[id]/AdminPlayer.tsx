@@ -59,6 +59,7 @@ export function AdminPlayer({ id }: { id: string }) {
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
   const [name, setName] = useState("");
+  const [deleteName, setDeleteName] = useState("");
 
   const load = useCallback(
     () =>
@@ -245,28 +246,63 @@ export function AdminPlayer({ id }: { id: string }) {
             >
               {suspended ? "Unsuspend" : confirm === "suspend" ? "Confirm suspend" : "Suspend"}
             </Button>
-            {p.user.isGuest && (
-              <Button
-                variant="secondary"
-                size="sm"
-                className="text-loss"
-                loading={busy === "delete"}
-                onClick={() =>
-                  run(
+            <Button
+              variant="secondary"
+              size="sm"
+              className="text-loss"
+              onClick={() => {
+                setConfirm(confirm === "delete" ? null : "delete");
+                setDeleteName("");
+              }}
+            >
+              {confirm === "delete" ? "Keep player" : "Delete player"}
+            </Button>
+          </div>
+          <AnimatePresence>
+            {confirm === "delete" && (
+              <motion.form
+                {...fadeUp}
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (deleteName.trim() !== p.user.name) return;
+                  void run(
                     "delete",
                     async () => {
-                      await adminApi.deleteGuest(id);
+                      await adminApi.deletePlayer(id);
                       router.replace("/admin");
                     },
-                    "Guest deleted",
-                    true,
-                  )
-                }
+                    "Player deleted",
+                  );
+                }}
+                className="mt-3 rounded-[12px] border border-loss/30 bg-loss/5 p-3"
               >
-                {confirm === "delete" ? "Confirm delete" : "Delete guest"}
-              </Button>
+                <p className="text-[13px] leading-relaxed">
+                  This permanently deletes <span className="font-semibold">{p.user.name}</span>: account, sign-ins, chips,
+                  ledger and game history. It can’t be undone.
+                </p>
+                <p className="mt-2 text-[12px] text-fg-muted">Type the player’s name to confirm.</p>
+                <div className="mt-2 flex gap-2">
+                  <input
+                    value={deleteName}
+                    onChange={(e) => setDeleteName(e.target.value)}
+                    placeholder={p.user.name}
+                    aria-label="Type the player's name to confirm"
+                    autoFocus
+                    className={inputCls}
+                  />
+                  <Button
+                    type="submit"
+                    size="sm"
+                    className="shrink-0 whitespace-nowrap bg-loss text-fg hover:bg-loss/90"
+                    loading={busy === "delete"}
+                    disabled={deleteName.trim() !== p.user.name}
+                  >
+                    Delete forever
+                  </Button>
+                </div>
+              </motion.form>
             )}
-          </div>
+          </AnimatePresence>
           <div className="mt-4 divide-y divide-hairline border-t border-hairline">
             <Row k="Joined" v={dateShort(p.user.joinedAt)} />
             <Row k="Last seen" v={data.lastSeenAt ? dateTime(data.lastSeenAt) : "—"} />

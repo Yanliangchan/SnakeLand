@@ -181,14 +181,27 @@ export async function adminRoutes(
     return { sessions };
   });
 
-  r.post("/v1/admin/players/:id/delete-guest", { schema: { params: idParams } }, async (request, reply) => {
-    const deleted = await opts.purge.purgeGuest(request.params.id);
-    if (!deleted) {
-      return reply
-        .status(409)
-        .send({ error: { code: "NOT_A_GUEST", message: "Only guest accounts can be deleted" } });
-    }
-    await admin.audit("delete_guest", request.params.id, null, request.clientIp);
-    return { ok: true };
-  });
+  // Permanent: the player, their wallet, ledger and game history all go.
+  // The body must repeat the id, so a stray or replayed request can't delete anyone.
+  r.post(
+    "/v1/admin/players/:id/delete",
+    { schema: { params: idParams, body: z.object({ confirmId: z.string().max(64) }) } },
+    async (request, reply) => {
+      const { id } = request.params;
+      if (request.body.confirmId !== id) {
+        return reply.status(400).send({ error: { code: "CONFIRM_MISMATCH", message: "Confirmation doesn't match this player" } });
+      }
+      const deleted = await opts.purge.purgePlayer(id);
+      if (!deleted) return reply.status(404).send({ error: { code: "PLAYER_NOT_FOUND", message: "Player not found" } });
+      admin.invalidate();
+      // The audit row keeps who it was, since the user row is gone.
+      await admin.audit(
+        "delete_player",
+        id,
+        { name: deleted.name, email: deleted.isAnonymous ? null : deleted.email, guest: deleted.isAnonymous },
+        request.clientIp,
+      );
+      return { ok: true };
+    },
+  );
 }

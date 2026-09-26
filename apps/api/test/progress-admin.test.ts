@@ -1,10 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { eq, inArray } from "drizzle-orm";
+import { desc, eq, inArray } from "drizzle-orm";
 import type { FastifyInstance, LightMyRequestResponse } from "fastify";
 import { DAILY_CLAIM_AMOUNT, weekKey, weekStart } from "@snakeland/shared";
 import { hashAdminPassword } from "../src/admin/auth";
 import { buildApp } from "../src/app";
-import { minesRounds, plinkoDrops, transactions, users, wallets } from "../src/db/schema";
+import { adminAudit, minesRounds, plinkoDrops, transactions, users, wallets } from "../src/db/schema";
 import { loadEnv } from "../src/env";
 import { FairSeedService } from "../src/games/fair-seeds";
 import { MinesService } from "../src/games/mines/service";
@@ -249,7 +249,20 @@ describe("Admin console + account routes", () => {
     expect((await signIn()).statusCode).toBe(403);
     await post(`/v1/admin/players/${p.id}/suspend`, { suspended: false });
     expect((await signIn()).statusCode).toBe(200);
-    expect((await post(`/v1/admin/players/${p.id}/delete-guest`)).statusCode).toBe(409);
+  });
+
+  it("deletes a registered player completely, only with a matching confirmation", async () => {
+    const p = await signUp("Doomed");
+    await post(`/v1/admin/players/${p.id}/balance`, { mode: "adjust", amount: 250 });
+    await post("/v1/wallet/daily-claim", undefined, p.cookie);
+    expect((await post(`/v1/admin/players/${p.id}/delete`, { confirmId: "someone-else" })).statusCode).toBe(400);
+    expect((await post(`/v1/admin/players/${p.id}/delete`, { confirmId: p.id })).statusCode).toBe(200);
+    expect(await db.select().from(users).where(eq(users.id, p.id))).toHaveLength(0);
+    expect(await db.select().from(transactions).where(eq(transactions.userId, p.id))).toHaveLength(0);
+    expect((await get("/v1/me", p.cookie)).statusCode).toBe(401);
+    expect((await post(`/v1/admin/players/${p.id}/delete`, { confirmId: p.id })).statusCode).toBe(404);
+    const [log] = await db.select().from(adminAudit).where(eq(adminAudit.targetUserId, p.id)).orderBy(desc(adminAudit.createdAt)).limit(1);
+    expect(log).toMatchObject({ action: "delete_player", detail: { name: "Doomed", guest: false } });
   });
 
   it("lets a guest leave, deleting the guest completely", async () => {

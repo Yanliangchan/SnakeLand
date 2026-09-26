@@ -28,5 +28,6 @@ export const adminApi = {
   rename: (id: string, name: string) => api<{ name: string }>(`${p(id)}/rename`, { method: "POST", body: { name } }),
   suspend: (id: string, suspended: boolean) => api(`${p(id)}/suspend`, { method: "POST", body: { suspended } }),
   signOut: (id: string) => api<{ sessions: number }>(`${p(id)}/sign-out`, { method: "POST", body: {} }),
-  deleteGuest: (id: string) => api(`${p(id)}/delete-guest`, { method: "POST", body: {} }),
+  /** Permanent. The server requires the id repeated as confirmation. */
+  deletePlayer: (id: string) => api(`${p(id)}/delete`, { method: "POST", body: { confirmId: id } }),
 };
