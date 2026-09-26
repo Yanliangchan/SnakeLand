@@ -6,13 +6,21 @@ import { Avatar, BalanceCounter } from "@/components/ui";
 import { tap, tapTransition } from "@/lib/motion";
 import { useSession } from "@/providers/session";
 
+/** The chip-stack mark: a solid top chip over two fading outlined ones. */
+export function LogoMark({ size = 20 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden>
+      <ellipse cx="16" cy="22" rx="9" ry="3.6" fill="none" stroke="currentColor" strokeWidth="2" opacity="0.45" />
+      <ellipse cx="16" cy="16.5" rx="9" ry="3.6" fill="none" stroke="currentColor" strokeWidth="2" opacity="0.7" />
+      <ellipse cx="16" cy="11" rx="9" ry="3.6" fill="currentColor" />
+    </svg>
+  );
+}
+
 export function Wordmark() {
   return (
     <Link href="/" className="flex items-center gap-2 text-[15px] font-semibold tracking-[var(--tracking-tighter)]">
-      <svg width="20" height="20" viewBox="0 0 32 32" aria-hidden>
-        <circle cx="16" cy="16" r="10" fill="none" stroke="currentColor" strokeWidth="2.5" />
-        <circle cx="16" cy="16" r="3" fill="currentColor" />
-      </svg>
+      <LogoMark size={20} />
       snakeland
     </Link>
   );
