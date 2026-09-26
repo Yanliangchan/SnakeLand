@@ -5,5 +5,7 @@ export function createRedis(url: string) {
     maxRetriesPerRequest: 3,
     enableOfflineQueue: false,
     lazyConnect: false,
+    // Resolve both A and AAAA records (Railway's private network is IPv6).
+    family: 0,
   });
 }

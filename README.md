@@ -141,15 +141,17 @@ Both games have a **1% house edge**, bets of 10–5,000, and multipliers stored 
 ## Security
 
 - **Auth**: Better Auth handles password hashing (scrypt) and sessions. The session cookie is `HttpOnly`,
-  `SameSite=Lax`, `Secure` in production, and scoped to the parent domain so `app.` and `api.` share it.
+  `SameSite=Lax`, `Secure` in production, and first-party on the web origin (the web app proxies API calls).
   Passwords must be 10–128 characters, and display names are length-checked with invisible/control characters
   stripped. Sign-in errors are generic, so they don't reveal which emails exist.
 - **CSRF**: every state-changing request must carry an allow-listed `Origin`. Bodies must be JSON only
   (`text/plain` is rejected). Together with `SameSite=Lax` cookies this also blocks login CSRF.
-- **CORS**: exact origin allow-list with credentials, and only `GET`/`POST`.
+- **CORS**: exact origin allow-list with credentials, and only `GET`/`POST` (only matters for direct API access;
+  browsers normally reach the API same-origin through the web proxy).
 - **Rate limits**: a global per-IP limit backed by Redis, plus tighter limits on sign-in (5/min), sign-up (5/h),
-  guest creation (10/h) and daily claims. The client IP comes from Fastify's `trustProxy` set to an exact hop
-  count, never from a header the client controls.
+  guest creation (10/h) and daily claims. The client IP comes from the edge's header (`CLIENT_IP_HEADER`, Railway's
+  `X-Real-IP`, forwarded unchanged by the web proxy) or an exact `X-Forwarded-For` hop count, never from a header
+  the client controls.
 - **Headers**: Helmet on the API (`default-src 'none'`, no framing, HSTS in production). The web app sends a
   per-request nonce-based CSP (`script-src 'nonce-…' 'strict-dynamic'`, `frame-ancestors 'none'`,
   `connect-src` limited to the API), plus `X-Frame-Options`, `nosniff`, `Referrer-Policy`, `Permissions-Policy`
@@ -164,12 +166,44 @@ Both games have a **1% house edge**, bets of 10–5,000, and multipliers stored 
 
 ## Deploying to Railway
 
-1. Create a project with **Postgres** and **Redis** plugins.
-2. Add two services from this repo, and set each one's config file to `apps/api/railway.json` or
-   `apps/web/railway.json`. The API runs its migrations as a pre-deploy step.
-3. API variables: `NODE_ENV=production`, `DATABASE_URL`, `REDIS_URL`, `BETTER_AUTH_SECRET`,
-   `API_URL=https://api.<domain>`, `WEB_ORIGINS=https://app.<domain>`, `COOKIE_DOMAIN=<domain>`,
-   `TRUST_PROXY_HOPS=1`.
-4. Web variables: `NEXT_PUBLIC_API_URL=https://api.<domain>` (needed at build time).
-5. Attach custom domains `app.<domain>` and `api.<domain>`. Both must be on the same parent domain so the session
-   cookie is first-party.
+The project runs as four services: **web**, **api**, **Postgres** and **Redis**. The browser only talks to the web
+service. The web service forwards `/api/auth/*` and `/v1/*` to the API over Railway's private network
+(`apps/web/src/lib/api-proxy.ts`), so the session cookie is first-party on the web domain and works on a plain
+`*.up.railway.app` address. Live Roulette is the one exception: its WebSocket goes straight to the API's public
+domain, authenticated with a single-use 30-second ticket minted through the proxy.
+
+Service settings (set in the dashboard; Railway no longer reads `railway.json`). Both build from the repo root so
+the pnpm workspace resolves:
+
+| | API | Web |
+| --- | --- | --- |
+| Build command | `pnpm --filter @snakeland/api build` | `pnpm --filter @snakeland/web build` |
+| Start command | `pnpm --filter @snakeland/api start` | `pnpm --filter @snakeland/web start` |
+| Pre-deploy | `pnpm --filter @snakeland/api db:migrate:prod` | — |
+| Healthcheck | `/healthz` | — |
+| Watch paths | `apps/api/**`, `packages/shared/**`, `pnpm-lock.yaml` | `apps/web/**`, `packages/shared/**`, `pnpm-lock.yaml` |
+
+**API variables**
+
+```
+NODE_ENV=production
+PORT=8080
+DATABASE_URL=${{Postgres.DATABASE_URL}}
+REDIS_URL=${{Redis.REDIS_URL}}
+BETTER_AUTH_SECRET=<openssl rand -base64 48>
+API_URL=https://<web domain>          # auth is served through the web origin
+WEB_ORIGINS=https://<web domain>
+CLIENT_IP_HEADER=x-real-ip            # Railway's edge sets it; used for rate limits
+```
+
+**Web variables** (`NEXT_PUBLIC_*` is read at build time)
+
+```
+PORT=8080
+API_INTERNAL_URL=http://${{api.RAILWAY_PRIVATE_DOMAIN}}:8080
+NEXT_PUBLIC_WS_URL=wss://<api domain>
+```
+
+The API listens on `::` (IPv4 and IPv6, as required by the private network) and falls back to IPv4 where IPv6
+isn't available. To use your own domain later, put both services on it and point the variables at the new
+origins; nothing else changes.

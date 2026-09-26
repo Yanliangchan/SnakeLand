@@ -9,7 +9,7 @@ import type {
   WheelId,
 } from "@snakeland/shared";
 import { api } from "./api";
-import { API_URL } from "./config";
+import { WS_URL } from "./config";
 
 export const rouletteApi = {
   state: (wheelId: WheelId) =>
@@ -55,8 +55,19 @@ export function useRouletteSocket(
     let timer: ReturnType<typeof setTimeout> | undefined;
     let pinger: ReturnType<typeof setInterval> | undefined;
 
-    const connect = () => {
-      const ws = new WebSocket(`${API_URL.replace(/^http/, "ws")}/v1/roulette/ws`);
+    const connect = async () => {
+      // A fresh single-use ticket per connection (fetched same-origin with the session cookie).
+      let ticket: string;
+      try {
+        ticket = (await api<{ ticket: string }>("/v1/roulette/ws-ticket", { method: "POST", body: {} })).ticket;
+      } catch {
+        if (stopped) return;
+        retry = Math.min(retry + 1, 5);
+        timer = setTimeout(() => void connect(), 500 * 2 ** retry);
+        return;
+      }
+      if (stopped) return;
+      const ws = new WebSocket(`${WS_URL}/v1/roulette/ws?ticket=${encodeURIComponent(ticket)}`);
       socket.current = ws;
       ws.onopen = () => {
         retry = 0;
@@ -92,10 +103,10 @@ export function useRouletteSocket(
         setConnected(false);
         if (stopped) return;
         retry = Math.min(retry + 1, 5);
-        timer = setTimeout(connect, 500 * 2 ** retry);
+        timer = setTimeout(() => void connect(), 500 * 2 ** retry);
       };
     };
-    connect();
+    void connect();
     return () => {
       stopped = true;
       clearTimeout(timer);

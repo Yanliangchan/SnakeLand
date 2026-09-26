@@ -24,6 +24,13 @@ async function shutdown(signal: string) {
 process.on("SIGTERM", () => void shutdown("SIGTERM"));
 process.on("SIGINT", () => void shutdown("SIGINT"));
 
-await app.listen({ host: env.HOST, port: env.PORT });
+try {
+  await app.listen({ host: env.HOST, port: env.PORT });
+} catch (err) {
+  // Dual-stack "::" needs IPv6; fall back to IPv4 on hosts without it.
+  if ((err as NodeJS.ErrnoException).code !== "EAFNOSUPPORT" || env.HOST !== "::") throw err;
+  app.log.warn("IPv6 unavailable, listening on IPv4 only");
+  await app.listen({ host: "0.0.0.0", port: env.PORT });
+}
 // Only the instance holding the Redis lease actually advances the wheels.
 dealer.start();

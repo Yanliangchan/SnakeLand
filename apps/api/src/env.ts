@@ -7,7 +7,8 @@ const origin = z
 
 const EnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
-  HOST: z.string().default("0.0.0.0"),
+  // "::" listens on IPv6 and IPv4 (Railway private networking resolves over IPv6).
+  HOST: z.string().default("::"),
   PORT: z.coerce.number().int().positive().default(4000),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("info"),
 
@@ -16,7 +17,10 @@ const EnvSchema = z.object({
 
   /** 32+ random bytes, e.g. `openssl rand -base64 48`. Signs session cookies. */
   BETTER_AUTH_SECRET: z.string().min(32, "BETTER_AUTH_SECRET must be at least 32 characters"),
-  /** Public origin of this API, e.g. https://api.example.com */
+  /**
+   * Public origin where browsers reach the auth routes: the API's own origin, or
+   * the web origin when the web app proxies /api and /v1 to the API.
+   */
   API_URL: origin,
   /** Comma-separated list of browser origins allowed to call the API, e.g. https://app.example.com */
   WEB_ORIGINS: z
@@ -25,7 +29,15 @@ const EnvSchema = z.object({
     .pipe(z.array(origin).min(1)),
   /** Parent domain shared by web + api (e.g. example.com). Unset for localhost. */
   COOKIE_DOMAIN: z.string().optional(),
-  /** Number of trusted reverse-proxy hops in front of the API (Railway: 1). */
+  /**
+   * Header set by the trusted edge with the client's IP (Railway: "x-real-ip").
+   * When set it is the only source of the client IP; otherwise TRUST_PROXY_HOPS applies.
+   */
+  CLIENT_IP_HEADER: z
+    .string()
+    .regex(/^[a-z0-9-]+$/)
+    .optional(),
+  /** Number of trusted X-Forwarded-For hops in front of the API (ignored with CLIENT_IP_HEADER). */
   TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(5).default(0),
 });
 

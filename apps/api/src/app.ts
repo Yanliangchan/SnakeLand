@@ -25,6 +25,7 @@ import { rouletteRoutes } from "./http/routes/roulette";
 import { MemoryBus, RedisBus } from "./realtime/bus";
 import { AlwaysLeader, RedisLeadership } from "./realtime/leader";
 import { RouletteHub } from "./realtime/roulette-hub";
+import { MemoryTicketStore, RedisTicketStore } from "./realtime/tickets";
 import { walletRoutes } from "./http/routes/wallet";
 import { WalletError } from "./wallet/errors";
 import { WalletService } from "./wallet/wallet-service";
@@ -48,6 +49,14 @@ export async function buildApp({ env, db, redis }: { env: Env; db: Db; redis: Re
         : {
             level: env.LOG_LEVEL,
             redact: ["req.headers.cookie", "req.headers.authorization", 'res.headers["set-cookie"]'],
+            serializers: {
+              // Never log query strings: the WebSocket ticket travels in one.
+              req: (req: { method: string; url: string; id: string }) => ({
+                id: req.id,
+                method: req.method,
+                url: req.url.split("?")[0],
+              }),
+            },
           },
     // Trust exactly N proxy hops (Railway edge = 1) so request.ip is the real client.
     trustProxy: (_address: string, hop: number) => hop < env.TRUST_PROXY_HOPS,
@@ -59,6 +68,13 @@ export async function buildApp({ env, db, redis }: { env: Env; db: Db; redis: Re
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
   app.decorateRequest("user", null);
+  app.decorateRequest("clientIp", "");
+  const IP_RE = /^[0-9a-fA-F:.]{2,45}$/;
+  app.addHook("onRequest", async (request) => {
+    const header = env.CLIENT_IP_HEADER ? request.headers[env.CLIENT_IP_HEADER] : undefined;
+    const value = typeof header === "string" ? header.trim() : "";
+    request.clientIp = IP_RE.test(value) ? value : request.ip;
+  });
 
   // text/plain is a CORS "simple" content type, so a cross-site form could send
   // it without a preflight. Only accept JSON bodies.
@@ -78,6 +94,7 @@ export async function buildApp({ env, db, redis }: { env: Env; db: Db; redis: Re
   const roulette = new RouletteService(db, wallet, bus);
   const dealer = new RouletteDealer(db, wallet, roulette, bus, leadership, app.log);
   const hub = new RouletteHub(bus, roulette);
+  const tickets = redis ? new RedisTicketStore(redis) : new MemoryTicketStore();
   app.addHook("onClose", async () => {
     await dealer.stop();
     await hub.close();
@@ -104,7 +121,7 @@ export async function buildApp({ env, db, redis }: { env: Env; db: Db; redis: Re
     max: 300,
     timeWindow: "1 minute",
     ...(redis ? { redis, nameSpace: "snk:rl:" } : {}),
-    keyGenerator: (req) => req.ip,
+    keyGenerator: (req) => req.clientIp || req.ip,
   });
 
   // CSRF defence: every state-changing request (including /api/auth, where Better
@@ -163,7 +180,7 @@ export async function buildApp({ env, db, redis }: { env: Env; db: Db; redis: Re
   await app.register(blackjackRoutes, { auth, blackjack });
   await app.register(instantRoutes, { auth, mines, plinko });
   await app.register(baccaratRoutes, { auth, baccarat });
-  await app.register(rouletteRoutes, { auth, roulette, hub, webOrigins: env.WEB_ORIGINS });
+  await app.register(rouletteRoutes, { auth, roulette, hub, tickets, webOrigins: env.WEB_ORIGINS });
 
   return { app, auth, wallet, blackjack, mines, plinko, baccarat, roulette, dealer };
 }

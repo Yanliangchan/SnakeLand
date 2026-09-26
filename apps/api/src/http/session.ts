@@ -12,6 +12,8 @@ export interface SessionUser {
 declare module "fastify" {
   interface FastifyRequest {
     user: SessionUser | null;
+    /** Client IP used for rate limiting and session metadata (see CLIENT_IP_HEADER). */
+    clientIp: string;
   }
 }
 

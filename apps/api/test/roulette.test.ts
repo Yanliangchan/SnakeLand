@@ -212,6 +212,35 @@ describe("Roulette WebSocket", () => {
     expect((await connect({ origin: ORIGIN })).status).toBe(401);
   });
 
+  it("accepts a single-use ticket instead of a cookie", async () => {
+    const issue = () =>
+      app.inject({ method: "POST", url: "/v1/roulette/ws-ticket", headers: { cookie, origin: ORIGIN } }).then((r) => r.json().ticket as string);
+    const ticket = await issue();
+    expect(ticket).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    const ok = await new Promise<{ ws: WebSocket; status?: number }>((resolve) => {
+      const ws = new WebSocket(`${url}?ticket=${ticket}`, { headers: { origin: ORIGIN } });
+      ws.on("open", () => resolve({ ws }));
+      ws.on("unexpected-response", (_q, res) => resolve({ ws, status: res.statusCode }));
+    });
+    expect(ok.status).toBeUndefined();
+    ok.ws.close();
+    // Reused, forged, or presented from a foreign origin: refused.
+    const reuse = await new Promise<number | undefined>((resolve) => {
+      const ws = new WebSocket(`${url}?ticket=${ticket}`, { headers: { origin: ORIGIN } });
+      ws.on("open", () => resolve(undefined));
+      ws.on("unexpected-response", (_q, res) => resolve(res.statusCode));
+    });
+    expect(reuse).toBe(401);
+    const fresh = await issue();
+    const foreign = await new Promise<number | undefined>((resolve) => {
+      const ws = new WebSocket(`${url}?ticket=${fresh}`, { headers: { origin: "https://evil.example" } });
+      ws.on("open", () => resolve(undefined));
+      ws.on("unexpected-response", (_q, res) => resolve(res.statusCode));
+    });
+    expect(foreign).toBe(403);
+    expect((await app.inject({ method: "POST", url: "/v1/roulette/ws-ticket", headers: { origin: ORIGIN } })).statusCode).toBe(401);
+  });
+
   it("streams wheel state after join and answers pings", async () => {
     const { ws } = await connect({ origin: ORIGIN, cookie });
     const received: RouletteServerMessage[] = [];

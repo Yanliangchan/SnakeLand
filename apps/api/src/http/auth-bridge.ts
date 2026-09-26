@@ -21,7 +21,7 @@ export async function authBridge(app: FastifyInstance, opts: { auth: Auth; apiUr
     handler: async (request, reply) => {
       const headers = fromNodeHeaders(request.headers);
       // Never trust a client-supplied value; always overwrite with the proxy-aware IP.
-      headers.set(CLIENT_IP_HEADER, request.ip);
+      headers.set(CLIENT_IP_HEADER, request.clientIp || request.ip);
 
       const response = await opts.auth.handler(
         new Request(new URL(request.url, opts.apiUrl), {

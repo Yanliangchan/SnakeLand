@@ -9,8 +9,7 @@ import { NextResponse, type NextRequest } from "next/server";
 export function proxy(request: NextRequest) {
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
   const isDev = process.env.NODE_ENV === "development";
-  const api = process.env.NEXT_PUBLIC_API_URL ?? "";
-  const apiWs = api.replace(/^http/, "ws");
+  const ws = process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:4000";
 
   const csp = [
     "default-src 'self'",
@@ -18,7 +17,7 @@ export function proxy(request: NextRequest) {
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' blob: data:",
     "font-src 'self'",
-    `connect-src 'self' ${api} ${apiWs}`.trim(),
+    `connect-src 'self' ${ws}`,
     "media-src 'self' blob:",
     "object-src 'none'",
     "base-uri 'self'",
@@ -39,7 +38,8 @@ export function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     {
-      source: "/((?!_next/static|_next/image|favicon.ico|icon.svg).*)",
+      // API traffic (proxied) is JSON; it needs no page CSP or nonce.
+      source: "/((?!_next/static|_next/image|favicon.ico|icon.svg|api/|v1/).*)",
       missing: [
         { type: "header", key: "next-router-prefetch" },
         { type: "header", key: "purpose", value: "prefetch" },

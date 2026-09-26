@@ -16,3 +16,6 @@ next-env.d.ts
 *.log
 .vercel
 .turbo
+
+# local redis snapshots
+*.rdb
