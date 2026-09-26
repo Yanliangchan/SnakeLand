@@ -61,9 +61,13 @@ export function GameShell({ title, tableLabel, tableId, onNextTable, controls, c
                 whileTap={tap}
                 transition={tapTransition}
                 onClick={onNextTable}
-                className="hidden h-9 items-center rounded-[var(--radius-ui)] px-3 text-[13px] text-fg-muted transition-colors hairline hover:text-fg sm:flex"
+                aria-label="Next table"
+                className="flex h-9 items-center gap-2 rounded-[var(--radius-ui)] px-2.5 text-[13px] text-fg-muted transition-colors hairline hover:text-fg sm:px-3"
               >
-                Next table
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden className="sm:hidden">
+                  <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                <span className="hidden sm:inline">Next table</span>
               </motion.button>
             )}
             {me && (

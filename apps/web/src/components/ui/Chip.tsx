@@ -40,6 +40,7 @@ export function Chip({ chipId, value, size = 44, selected, onClick, disabled, cl
       layoutId={`chip-${chipId}`}
       initial={chipEnter.initial}
       animate={chipEnter.animate}
+      exit={{ scale: 0.6, opacity: 0 }}
       transition={chipSpring}
       whileTap={onClick && !disabled ? { scale: 0.92 } : undefined}
       onClick={onClick}

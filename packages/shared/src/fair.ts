@@ -63,3 +63,8 @@ export function fairShuffle<T>(items: readonly T[], floats: readonly number[]): 
   }
   return arr;
 }
+
+/** Rebuild a shuffled shoe from its revealed seeds (same algorithm the server uses). */
+export function shuffleShoe<T>(ordered: readonly T[], serverSeed: string, clientSeed: string): T[] {
+  return fairShuffle(ordered, fairFloats(serverSeed, clientSeed, 0, Math.max(0, ordered.length - 1)));
+}

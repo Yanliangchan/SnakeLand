@@ -3,8 +3,8 @@
 A casino-style web app with **virtual chips only**. There's no real money anywhere, and every outcome is provably fair.
 It has six games in one lobby: Blackjack, Mines, Plinko, Baccarat, Roulette and Crash.
 
-> Status: **step 1 of 5**. Auth, wallet, lobby shell and the design-system component library are built.
-> The games land in later steps.
+> Status: **step 2 of 5**. Auth, wallet, lobby, the design system and **Blackjack** are live.
+> Mines, Plinko, Baccarat, Roulette and Crash come next.
 
 ## Stack
 
@@ -56,6 +56,28 @@ pnpm typecheck && pnpm lint && pnpm test      # API tests need Postgres (DB: sna
 - Daily free claim: 5,000 chips on a rolling 24h cooldown, enforced under the same row lock.
 - Guest → account: a guest's chips (and claim cooldown) carry over **only into a brand-new account**. Signing a
   guest into an existing account doesn't merge anything, so guest sessions can't be farmed for chips.
+
+## Blackjack
+
+- **Rules**: 6-deck shoe, reshuffled at 75% penetration. Blackjack pays 3:2 (rounded down to whole chips). The dealer
+  stands on all 17s and peeks for blackjack under an ace or a 10. You can double on any first two cards, double
+  after split, resplit up to 4 hands (split aces get one card each and can't be resplit), and take insurance
+  (half the bet, pays 2:1). Bets are 10–5,000.
+- **Engine**: `apps/api/src/games/blackjack/engine.ts` is pure and deterministic, with cards passed in through
+  `draw()`. The service runs every action in one DB transaction that locks the round → shoe → wallet in that order.
+  Hands live in Postgres, so a refresh (or a server restart) resumes the hand exactly where it was.
+- **Double-submits**: every action carries the round `version`, and a stale version gets a 409. Each stake has its
+  own idempotency key.
+- **Tables**: one open table per user. "Next table" is blocked mid-hand. Otherwise it closes the table, reveals its
+  shoe, and opens a fresh table + shoe, which resets recent results and streak. Wallet and history are unaffected.
+- **Fairness**: each shoe commits to `sha256(serverSeed)` before any card is dealt. The browser sends a random client
+  seed on the shoe's first deal. The shoe order is a Fisher–Yates shuffle driven by
+  `HMAC-SHA256(serverSeed, "clientSeed:0:n")`. When the shoe is reshuffled or you leave the table, the server
+  seed is revealed. The in-game "Fair" panel verifies the commit, and every hand can be replayed with
+  `shuffleShoe(orderedShoe(6), serverSeed, clientSeed)[round.shoeStart + card.seq]`. The test suite does
+  exactly this for a whole shoe.
+- **Keyboard**: <kbd>H</kbd> hit · <kbd>S</kbd> stand · <kbd>D</kbd> double · <kbd>P</kbd> split ·
+  <kbd>I</kbd>/<kbd>N</kbd> insurance · <kbd>Enter</kbd> deal.
 
 ## Security
 

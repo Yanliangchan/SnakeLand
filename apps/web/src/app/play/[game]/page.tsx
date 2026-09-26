@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { GAMES, isGameId } from "@snakeland/shared";
+import { BlackjackGame } from "@/components/games/blackjack/BlackjackGame";
 import { RequireSession } from "@/components/RequireSession";
 import { GamePreview } from "./GamePreview";
 
@@ -17,7 +18,7 @@ export default async function PlayPage({ params }: Props) {
   if (!isGameId(game)) notFound();
   return (
     <RequireSession>
-      <GamePreview game={game} initialTableId={randomUUID()} />
+      {game === "blackjack" ? <BlackjackGame /> : <GamePreview game={game} initialTableId={randomUUID()} />}
     </RequireSession>
   );
 }

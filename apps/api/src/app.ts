@@ -8,7 +8,10 @@ import type { Redis } from "ioredis";
 import { createAuth } from "./auth";
 import type { Db } from "./db/client";
 import type { Env } from "./env";
+import { GameError } from "./games/errors";
+import { BlackjackService } from "./games/blackjack/service";
 import { authBridge } from "./http/auth-bridge";
+import { blackjackRoutes } from "./http/routes/blackjack";
 import { walletRoutes } from "./http/routes/wallet";
 import { WalletError } from "./wallet/errors";
 import { WalletService } from "./wallet/wallet-service";
@@ -50,6 +53,7 @@ export async function buildApp({ env, db, redis }: { env: Env; db: Db; redis: Re
 
   const wallet = new WalletService(db);
   const auth = createAuth({ db, env, wallet });
+  const blackjack = new BlackjackService(db, wallet);
 
   await app.register(helmet, {
     // JSON-only API: nothing should ever render or frame it.
@@ -96,6 +100,9 @@ export async function buildApp({ env, db, redis }: { env: Env; db: Db; redis: Re
         .status(WALLET_ERROR_STATUS[error.code])
         .send({ error: { code: error.code, message: error.message, ...error.details } });
     }
+    if (error instanceof GameError) {
+      return reply.status(error.status).send({ error: { code: error.code, message: error.message } });
+    }
     if (hasZodFastifySchemaValidationErrors(error)) {
       return reply.status(400).send({ error: { code: "VALIDATION_ERROR", message: "Invalid request" } });
     }
@@ -123,6 +130,7 @@ export async function buildApp({ env, db, redis }: { env: Env; db: Db; redis: Re
 
   await app.register(authBridge, { auth, apiUrl: env.API_URL });
   await app.register(walletRoutes, { auth, wallet });
+  await app.register(blackjackRoutes, { auth, blackjack });
 
-  return { app, auth, wallet };
+  return { app, auth, wallet, blackjack };
 }

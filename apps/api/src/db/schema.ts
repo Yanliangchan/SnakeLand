@@ -158,6 +158,91 @@ export const transactions = pgTable(
   ],
 );
 
+// ---------------------------------------------------------------------------
+// Blackjack
+// ---------------------------------------------------------------------------
+
+export const blackjackTables = pgTable(
+  "blackjack_tables",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    createdAt: createdAt(),
+    closedAt: timestamp("closed_at", { withTimezone: true }),
+  },
+  (t) => [
+    // One open table per user.
+    uniqueIndex("blackjack_tables_one_open_uq").on(t.userId).where(sql`${t.closedAt} IS NULL`),
+  ],
+);
+
+/**
+ * One shuffled shoe. `serverSeed` is secret until `revealedAt` is set; the
+ * order is fully determined by (serverSeed, clientSeed) and never stored.
+ */
+export const blackjackShoes = pgTable(
+  "blackjack_shoes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tableId: uuid("table_id")
+      .notNull()
+      .references(() => blackjackTables.id, { onDelete: "restrict" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    decks: integer("decks").notNull(),
+    serverSeed: text("server_seed").notNull(),
+    serverSeedHash: text("server_seed_hash").notNull(),
+    clientSeed: text("client_seed"),
+    position: integer("position").notNull().default(0),
+    cutPosition: integer("cut_position").notNull(),
+    createdAt: createdAt(),
+    revealedAt: timestamp("revealed_at", { withTimezone: true }),
+  },
+  (t) => [
+    index("blackjack_shoes_table_idx").on(t.tableId),
+    // One live (unrevealed) shoe per table.
+    uniqueIndex("blackjack_shoes_one_live_uq").on(t.tableId).where(sql`${t.revealedAt} IS NULL`),
+    check("blackjack_shoes_position_range", sql`${t.position} >= 0 AND ${t.position} <= ${t.decks} * 52`),
+  ],
+);
+
+export const roundStatusEnum = pgEnum("round_status", ["in_progress", "settled"]);
+
+export const blackjackRounds = pgTable(
+  "blackjack_rounds",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tableId: uuid("table_id")
+      .notNull()
+      .references(() => blackjackTables.id, { onDelete: "restrict" }),
+    shoeId: uuid("shoe_id")
+      .notNull()
+      .references(() => blackjackShoes.id, { onDelete: "restrict" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    status: roundStatusEnum("status").notNull().default("in_progress"),
+    /** Engine state (EngineState), including face-down cards: never sent to clients as-is. */
+    state: jsonb("state").notNull(),
+    version: integer("version").notNull().default(1),
+    /** Shoe position of the first card of this round, so it can be replayed after the reveal. */
+    shoeStart: integer("shoe_start").notNull(),
+    totalBet: bigint("total_bet", { mode: "number" }).notNull(),
+    totalPayout: bigint("total_payout", { mode: "number" }),
+    createdAt: createdAt(),
+    settledAt: timestamp("settled_at", { withTimezone: true }),
+  },
+  (t) => [
+    index("blackjack_rounds_table_idx").on(t.tableId, t.createdAt.desc()),
+    index("blackjack_rounds_user_idx").on(t.userId, t.createdAt.desc()),
+    // At most one hand in play per table.
+    uniqueIndex("blackjack_rounds_one_active_uq").on(t.tableId).where(sql`${t.status} = 'in_progress'`),
+  ],
+);
+
 export const schema = {
   users,
   sessions,
@@ -166,4 +251,7 @@ export const schema = {
   rateLimits,
   wallets,
   transactions,
+  blackjackTables,
+  blackjackShoes,
+  blackjackRounds,
 };

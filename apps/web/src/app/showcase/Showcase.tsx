@@ -12,17 +12,12 @@ import {
   PlayingCard,
   WinCelebration,
   type ChipValue,
-  type Suit,
 } from "@/components/ui";
+import type { Card as CardCode } from "@snakeland/shared";
 import { tableSwitch } from "@/lib/motion";
 import { useSettings } from "@/providers/settings";
 
-const DEMO_CARDS: Array<{ rank: string; suit: Suit }> = [
-  { rank: "A", suit: "S" },
-  { rank: "K", suit: "H" },
-  { rank: "7", suit: "D" },
-  { rank: "10", suit: "C" },
-];
+const DEMO_CARDS: CardCode[] = ["AS", "KH", "7D", "TC"];
 
 function Section({ n, title, children }: { n: number; title: string; children: React.ReactNode }) {
   return (
@@ -39,6 +34,7 @@ export function Showcase() {
   const { play } = useSettings();
   const [balance, setBalance] = useState(10_000);
   const [dealt, setDealt] = useState(0);
+  const [revealed, setRevealed] = useState(false);
   const [table, setTable] = useState(1);
   const [result, setResult] = useState<{ id: number; multiplier: number } | null>(null);
 
@@ -90,7 +86,7 @@ export function Showcase() {
           <div className="flex min-h-[112px] gap-2">
             <AnimatePresence>
               {DEMO_CARDS.slice(0, dealt).map((c, i) => (
-                <PlayingCard key={`${c.rank}${c.suit}`} {...c} i={i} />
+                <PlayingCard key={c} card={i === 3 && !revealed ? null : c} i={i} />
               ))}
             </AnimatePresence>
           </div>
@@ -103,7 +99,16 @@ export function Showcase() {
             >
               Deal
             </Button>
-            <Button variant="secondary" onClick={() => setDealt(0)}>
+            <Button variant="secondary" disabled={dealt === 0} onClick={() => setRevealed((r) => !r)}>
+              Flip hole card
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setDealt(0);
+                setRevealed(false);
+              }}
+            >
               Clear
             </Button>
           </div>

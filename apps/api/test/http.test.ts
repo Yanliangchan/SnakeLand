@@ -141,4 +141,46 @@ describe("HTTP", () => {
     expect(ok.statusCode).toBe(200);
     expect(ok.json().items[0]).toMatchObject({ type: "signup_bonus", amount: STARTING_BALANCE });
   });
+
+  it("plays blackjack over HTTP with bet limits and CSRF checks", async () => {
+    const cookie = cookieFrom(await signUp({ email: email(), password: "correct horse battery", name: "Ed" }));
+    const post = (url: string, payload?: unknown, origin: string | null = ORIGIN) =>
+      app.inject({
+        method: "POST",
+        url,
+        headers: { cookie, ...(origin ? { origin } : {}), ...(payload ? { "content-type": "application/json" } : {}) },
+        payload: payload ? JSON.stringify(payload) : undefined,
+      });
+
+    expect((await post("/v1/blackjack/table", undefined, null)).statusCode).toBe(403);
+    const table = (await post("/v1/blackjack/table")).json();
+    expect(table.shoe.commit).toMatch(/^[0-9a-f]{64}$/);
+    expect(table).not.toHaveProperty("shoe.serverSeed");
+
+    expect((await post("/v1/blackjack/rounds", { tableId: table.id, bet: 5 })).statusCode).toBe(400);
+    expect((await post("/v1/blackjack/rounds", { tableId: table.id, bet: 5001 })).statusCode).toBe(400);
+    expect((await post("/v1/blackjack/rounds", { tableId: table.id, bet: 10.5 })).statusCode).toBe(400);
+    expect((await post("/v1/blackjack/rounds", { tableId: table.id, bet: 10, clientSeed: "<script>" })).statusCode).toBe(
+      400,
+    );
+
+    const started = await post("/v1/blackjack/rounds", { tableId: table.id, bet: 100 });
+    expect(started.statusCode).toBe(200);
+    let update = started.json();
+    expect(JSON.stringify(update)).not.toContain("serverSeed");
+    while (update.round.phase !== "settled") {
+      const action = update.round.allowed.includes("stand") ? "stand" : "no_insurance";
+      const res = await post(`/v1/blackjack/rounds/${update.round.id}/actions`, {
+        action,
+        version: update.round.version,
+      });
+      expect(res.statusCode).toBe(200);
+      update = res.json();
+    }
+    expect(update.round.dealer.revealed).toBe(true);
+    expect(update.recent).toHaveLength(1);
+
+    const bogus = await post("/v1/blackjack/rounds/not-a-uuid/actions", { action: "hit", version: 1 });
+    expect(bogus.statusCode).toBe(400);
+  });
 });

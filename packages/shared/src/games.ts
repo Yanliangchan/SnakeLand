@@ -20,7 +20,7 @@ export const GAMES: Record<GameId, GameMeta> = {
     tagline: "Six-deck shoe. Dealer stands on 17.",
     kind: "table",
     usesTables: true,
-    available: false,
+    available: true,
   },
   mines: {
     id: "mines",
