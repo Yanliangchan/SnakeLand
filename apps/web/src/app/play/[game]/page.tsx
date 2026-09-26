@@ -3,6 +3,8 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { GAMES, isGameId } from "@snakeland/shared";
 import { BlackjackGame } from "@/components/games/blackjack/BlackjackGame";
+import { MinesGame } from "@/components/games/mines/MinesGame";
+import { PlinkoGame } from "@/components/games/plinko/PlinkoGame";
 import { RequireSession } from "@/components/RequireSession";
 import { GamePreview } from "./GamePreview";
 
@@ -18,7 +20,15 @@ export default async function PlayPage({ params }: Props) {
   if (!isGameId(game)) notFound();
   return (
     <RequireSession>
-      {game === "blackjack" ? <BlackjackGame /> : <GamePreview game={game} initialTableId={randomUUID()} />}
+      {game === "blackjack" ? (
+        <BlackjackGame />
+      ) : game === "mines" ? (
+        <MinesGame />
+      ) : game === "plinko" ? (
+        <PlinkoGame />
+      ) : (
+        <GamePreview game={game} initialTableId={randomUUID()} />
+      )}
     </RequireSession>
   );
 }

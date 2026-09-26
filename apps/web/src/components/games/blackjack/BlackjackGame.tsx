@@ -11,23 +11,21 @@ import {
   type RevealedShoeDTO,
 } from "@snakeland/shared";
 import { GameShell } from "@/components/GameShell";
-import { CHIP_VALUES, type ChipValue } from "@/components/ui";
 import { ApiError } from "@/lib/api";
-import { blackjackApi, newClientSeed } from "@/lib/blackjack-api";
+import { blackjackApi } from "@/lib/blackjack-api";
 import { useSession } from "@/providers/session";
 import { useSettings } from "@/providers/settings";
 import { BetControls, type Mode } from "./BetControls";
-import { chipId, chipsFor, MAX_STACK, sum, type SlipChip } from "./chips";
 import { FairnessPanel } from "./FairnessPanel";
 import { Felt } from "./Felt";
+import { useChipSlip } from "../shared/ChipSlip";
+import { useClientSeed } from "../shared/useClientSeed";
 
 const maxSeq = (r: BlackjackRoundDTO | null) =>
   r ? Math.max(-1, ...r.hands.flatMap((h) => h.cards.map((c) => c.seq)), ...r.dealer.cards.map((c) => c.seq)) : -1;
 
 /** The stake a round was opened with (hands may since be doubled). */
 const baseBetOf = (r: BlackjackRoundDTO) => Math.min(...r.hands.map((h) => (h.doubled ? h.bet / 2 : h.bet)));
-
-const freshTray = () => Object.fromEntries(CHIP_VALUES.map((v) => [v, chipId(v)])) as Record<ChipValue, string>;
 
 function message(e: unknown): string {
   if (e instanceof ApiError) {
@@ -45,16 +43,16 @@ export function BlackjackGame() {
   const [round, setRound] = useState<BlackjackRoundDTO | null>(null);
   const [baseSeq, setBaseSeq] = useState(0);
   const [revealed, setRevealed] = useState<RevealedShoeDTO | null>(null);
-  const [chips, setChips] = useState<SlipChip[]>([]);
-  const [tray, setTray] = useState(freshTray);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fairOpen, setFairOpen] = useState(false);
   const busy = useRef(false);
 
   const balance = me?.wallet.balance ?? 0;
-  const bet = sum(chips);
-  const room = Math.max(0, Math.min(BLACKJACK_RULES.maxBet, balance) - bet);
+  const slip = useChipSlip(Math.min(BLACKJACK_RULES.maxBet, balance));
+  const bet = slip.amount;
+  const clientSeed = useClientSeed();
+  const setSlip = slip.set;
 
   const mode: Mode = !table
     ? "loading"
@@ -71,8 +69,8 @@ export function BlackjackGame() {
     setTable(t);
     setRound(t.round);
     setBaseSeq(0);
-    if (t.round) setChips(chipsFor(baseBetOf(t.round)));
-  }, []);
+    if (t.round) setSlip(baseBetOf(t.round));
+  }, [setSlip]);
 
   useEffect(() => {
     let cancelled = false;
@@ -82,13 +80,13 @@ export function BlackjackGame() {
         if (cancelled) return;
         setTable(t);
         setRound(t.round);
-        if (t.round) setChips(chipsFor(baseBetOf(t.round)));
+        if (t.round) setSlip(baseBetOf(t.round));
       })
       .catch((e: unknown) => !cancelled && setError(message(e)));
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [setSlip]);
 
   function apply(u: BlackjackUpdateDTO, isNewRound: boolean) {
     setBaseSeq(isNewRound ? 0 : maxSeq(round) + 1);
@@ -116,24 +114,13 @@ export function BlackjackGame() {
     }
   }
 
-  function placeChip(value: ChipValue) {
-    if (value > room || pending) return;
-    play("click");
-    setError(null);
-    setChips((c) => {
-      const next = [...c, { id: tray[value], value }];
-      return next.length > MAX_STACK ? chipsFor(sum(next)) : next;
-    });
-    setTray((t) => ({ ...t, [value]: chipId(value) }));
-  }
-
   const deal = () =>
     run(async () => {
       if (!table || bet < BLACKJACK_RULES.minBet) return;
       const u = await blackjackApi.deal({
         tableId: table.id,
         bet,
-        clientSeed: table.shoe.clientSeed ? undefined : newClientSeed(),
+        clientSeed: table.shoe.clientSeed ? undefined : clientSeed.next(),
       });
       apply(u, true);
     });
@@ -191,13 +178,9 @@ export function BlackjackGame() {
           <BetControls
             mode={mode}
             round={round}
-            tray={tray}
-            bet={bet}
-            room={room}
+            slip={slip}
             pending={pending}
             error={error}
-            onChip={placeChip}
-            onClear={() => setChips([])}
             onDeal={deal}
             onAction={act}
             onChangeBet={() => {
@@ -214,7 +197,7 @@ export function BlackjackGame() {
             shoe={table.shoe}
             recent={table.recent}
             streak={table.streak}
-            chips={chips}
+            chips={slip.chips}
             onFairness={() => setFairOpen(true)}
           />
         ) : (

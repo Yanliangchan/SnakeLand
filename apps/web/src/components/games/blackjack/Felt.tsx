@@ -2,10 +2,11 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import type { BlackjackRoundDTO, RecentResult, ShoeDTO } from "@snakeland/shared";
-import { Chip, WinCelebration } from "@/components/ui";
+import { WinCelebration } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { fade, fadeUp } from "@/lib/motion";
-import type { SlipChip } from "./chips";
+import { ChipStack } from "../shared/ChipSlip";
+import type { SlipChip } from "../shared/chips";
 import { CardRow, ResultTag, TotalPill } from "./HandView";
 
 function Recent({ recent, streak }: { recent: RecentResult[]; streak: number }) {
@@ -34,26 +35,6 @@ function Recent({ recent, streak }: { recent: RecentResult[]; streak: number }) 
           </motion.span>
         )}
       </AnimatePresence>
-    </div>
-  );
-}
-
-function ChipStack({ chips, amount }: { chips: SlipChip[]; amount: number }) {
-  return (
-    <div className="flex flex-col items-center gap-2">
-      <div className="relative grid size-16 place-items-center rounded-full border border-dashed border-hairline-strong">
-        <AnimatePresence>
-          {chips.map((c, i) => (
-            // Each chip sits 6px above the last, so the pile reads as a stack.
-            <div key={c.id} className="absolute" style={{ transform: `translateY(${-i * 6}px)`, zIndex: i }}>
-              <Chip chipId={c.id} value={c.value} size={44} />
-            </div>
-          ))}
-        </AnimatePresence>
-      </div>
-      <span className="text-[13px] font-medium text-fg-muted tabular">
-        {amount > 0 ? amount.toLocaleString() : "Place your bet"}
-      </span>
     </div>
   );
 }
@@ -178,7 +159,12 @@ export function Felt({
       </div>
 
       <div className="mt-auto flex justify-center pt-4">
-        <ChipStack chips={chips} amount={betAmount} />
+        <div className="flex flex-col items-center gap-2">
+          <ChipStack chips={chips} />
+          <span className="text-[13px] font-medium text-fg-muted tabular">
+            {betAmount > 0 ? betAmount.toLocaleString() : "Place your bet"}
+          </span>
+        </div>
       </div>
     </div>
   );

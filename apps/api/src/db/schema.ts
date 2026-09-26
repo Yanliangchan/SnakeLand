@@ -243,6 +243,81 @@ export const blackjackRounds = pgTable(
   ],
 );
 
+// ---------------------------------------------------------------------------
+// Instant games (Mines, Plinko): per-round commit–reveal
+// ---------------------------------------------------------------------------
+
+/**
+ * The server seed a user's next instant round will use. Its hash is shown
+ * before they bet; the seed itself stays secret until that round ends.
+ */
+export const fairSeeds = pgTable("fair_seeds", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "restrict" }),
+  nextServerSeed: text("next_server_seed").notNull(),
+  nextServerSeedHash: text("next_server_seed_hash").notNull(),
+  updatedAt: updatedAt(),
+});
+
+export const minesStatusEnum = pgEnum("mines_status", ["playing", "cashed_out", "bust"]);
+
+export const minesRounds = pgTable(
+  "mines_rounds",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    status: minesStatusEnum("status").notNull().default("playing"),
+    bet: bigint("bet", { mode: "number" }).notNull(),
+    mines: integer("mines").notNull(),
+    /** Safe tiles picked, in order. */
+    picks: jsonb("picks").$type<number[]>().notNull().default([]),
+    bustTile: integer("bust_tile"),
+    serverSeed: text("server_seed").notNull(),
+    serverSeedHash: text("server_seed_hash").notNull(),
+    clientSeed: text("client_seed").notNull(),
+    multiplierX100: integer("multiplier_x100").notNull().default(100),
+    payout: bigint("payout", { mode: "number" }),
+    version: integer("version").notNull().default(1),
+    createdAt: createdAt(),
+    settledAt: timestamp("settled_at", { withTimezone: true }),
+  },
+  (t) => [
+    index("mines_rounds_user_idx").on(t.userId, t.createdAt.desc()),
+    uniqueIndex("mines_rounds_one_active_uq").on(t.userId).where(sql`${t.status} = 'playing'`),
+    check("mines_rounds_mines_range", sql`${t.mines} BETWEEN 1 AND 24`),
+  ],
+);
+
+export const plinkoRiskEnum = pgEnum("plinko_risk", ["low", "medium", "high"]);
+
+export const plinkoDrops = pgTable(
+  "plinko_drops",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    bet: bigint("bet", { mode: "number" }).notNull(),
+    rows: integer("rows").notNull(),
+    risk: plinkoRiskEnum("risk").notNull(),
+    path: jsonb("path").$type<(0 | 1)[]>().notNull(),
+    bucket: integer("bucket").notNull(),
+    multiplierX100: integer("multiplier_x100").notNull(),
+    payout: bigint("payout", { mode: "number" }).notNull(),
+    serverSeed: text("server_seed").notNull(),
+    serverSeedHash: text("server_seed_hash").notNull(),
+    clientSeed: text("client_seed").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index("plinko_drops_user_idx").on(t.userId, t.createdAt.desc()),
+    check("plinko_drops_rows_range", sql`${t.rows} BETWEEN 8 AND 16`),
+  ],
+);
+
 export const schema = {
   users,
   sessions,
@@ -254,4 +329,7 @@ export const schema = {
   blackjackTables,
   blackjackShoes,
   blackjackRounds,
+  fairSeeds,
+  minesRounds,
+  plinkoDrops,
 };

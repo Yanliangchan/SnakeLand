@@ -3,8 +3,8 @@
 A casino-style web app with **virtual chips only**. There's no real money anywhere, and every outcome is provably fair.
 It has six games in one lobby: Blackjack, Mines, Plinko, Baccarat, Roulette and Crash.
 
-> Status: **step 2 of 5**. Auth, wallet, lobby, the design system and **Blackjack** are live.
-> Mines, Plinko, Baccarat, Roulette and Crash come next.
+> Status: **step 3 of 5**. Auth, wallet, lobby, the design system, **Blackjack**, **Mines** and **Plinko** are live.
+> Baccarat, Roulette and Crash come next.
 
 ## Stack
 
@@ -78,6 +78,29 @@ pnpm typecheck && pnpm lint && pnpm test      # API tests need Postgres (DB: sna
   exactly this for a whole shoe.
 - **Keyboard**: <kbd>H</kbd> hit · <kbd>S</kbd> stand · <kbd>D</kbd> double · <kbd>P</kbd> split ·
   <kbd>I</kbd>/<kbd>N</kbd> insurance · <kbd>Enter</kbd> deal.
+
+## Mines and Plinko
+
+Both games have a **1% house edge**, bets of 10–5,000, and multipliers stored as integer hundredths
+(`150` = 1.50×), so a payout is always exactly `floor(stake × x100 / 100)`.
+
+- **Mines**: a 5×5 grid with 1–24 mines. After *k* safe picks the multiplier is
+  `floor(99 × C(25, k) / C(25 − mines, k))` hundredths, computed with BigInt so there's no float drift. The mine
+  layout is the first *n* tiles of a fair Fisher–Yates shuffle. You can cash out any time after the first pick,
+  and finding every safe tile cashes out automatically. A refresh resumes the round.
+- **Plinko**: 8–16 rows × low/medium/high risk. There's one fair float per row (below 0.5 = left), so the landing
+  bucket is simply the number of rights. It's decided by the seeds before anything moves, and the ball animates
+  along that exact path. The 27 payout tables are original, and a test checks each one against the exact
+  binomial odds (every table returns 98.7–99.0%, is symmetric, and rises toward the edges). High risk on
+  16 rows tops out at 1,010×.
+- **Fairness (per-round commit–reveal)**: each player always has one pre-committed server seed, and its hash is
+  shown before they bet. Starting a round uses it together with the browser's client seed (random each round,
+  or pinned in the Fair panel), then immediately commits the next one. The seed is revealed as soon as the round
+  ends, and the Fair panel re-checks both the commit and the outcome (mine layout / ball path) in the browser.
+- **Consistency**: rounds and money commit in one transaction. Mines actions carry a version (stale → 409), and
+  every stake/payout has an idempotency key. Concurrent Plinko drops each lock and consume their own seed.
+- **Keyboard**: Mines: <kbd>Enter</kbd> bet / cash out, <kbd>R</kbd> random tile. Plinko: <kbd>Space</kbd> /
+  <kbd>Enter</kbd> drop.
 
 ## Security
 

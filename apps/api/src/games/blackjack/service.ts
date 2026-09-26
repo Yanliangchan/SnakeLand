@@ -23,7 +23,9 @@ import { CUT_POSITION, toRevealedShoeDTO, toRoundDTO, toShoeDTO } from "./dto";
 type ShoeRow = typeof blackjackShoes.$inferSelect;
 type RoundRow = typeof blackjackRounds.$inferSelect;
 
-export const CLIENT_SEED_RE = /^[A-Za-z0-9_-]{1,64}$/;
+import { CLIENT_SEED_RE } from "../fair-seeds";
+
+export { CLIENT_SEED_RE };
 const RECENT_LIMIT = 12;
 
 /** Cards come off a shoe strictly in its committed order. */

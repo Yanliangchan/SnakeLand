@@ -10,8 +10,12 @@ import type { Db } from "./db/client";
 import type { Env } from "./env";
 import { GameError } from "./games/errors";
 import { BlackjackService } from "./games/blackjack/service";
+import { FairSeedService } from "./games/fair-seeds";
+import { MinesService } from "./games/mines/service";
+import { PlinkoService } from "./games/plinko/service";
 import { authBridge } from "./http/auth-bridge";
 import { blackjackRoutes } from "./http/routes/blackjack";
+import { instantRoutes } from "./http/routes/instant";
 import { walletRoutes } from "./http/routes/wallet";
 import { WalletError } from "./wallet/errors";
 import { WalletService } from "./wallet/wallet-service";
@@ -54,6 +58,9 @@ export async function buildApp({ env, db, redis }: { env: Env; db: Db; redis: Re
   const wallet = new WalletService(db);
   const auth = createAuth({ db, env, wallet });
   const blackjack = new BlackjackService(db, wallet);
+  const seeds = new FairSeedService(db);
+  const mines = new MinesService(db, wallet, seeds);
+  const plinko = new PlinkoService(db, wallet, seeds);
 
   await app.register(helmet, {
     // JSON-only API: nothing should ever render or frame it.
@@ -131,6 +138,7 @@ export async function buildApp({ env, db, redis }: { env: Env; db: Db; redis: Re
   await app.register(authBridge, { auth, apiUrl: env.API_URL });
   await app.register(walletRoutes, { auth, wallet });
   await app.register(blackjackRoutes, { auth, blackjack });
+  await app.register(instantRoutes, { auth, mines, plinko });
 
-  return { app, auth, wallet, blackjack };
+  return { app, auth, wallet, blackjack, mines, plinko };
 }

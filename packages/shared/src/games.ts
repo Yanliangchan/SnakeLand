@@ -28,7 +28,7 @@ export const GAMES: Record<GameId, GameMeta> = {
     tagline: "Pick safe tiles. Cash out anytime.",
     kind: "instant",
     usesTables: false,
-    available: false,
+    available: true,
   },
   plinko: {
     id: "plinko",
@@ -36,7 +36,7 @@ export const GAMES: Record<GameId, GameMeta> = {
     tagline: "Drop the ball. Watch it land.",
     kind: "instant",
     usesTables: false,
-    available: false,
+    available: true,
   },
   baccarat: {
     id: "baccarat",

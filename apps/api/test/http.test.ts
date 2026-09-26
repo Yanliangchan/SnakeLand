@@ -183,4 +183,37 @@ describe("HTTP", () => {
     const bogus = await post("/v1/blackjack/rounds/not-a-uuid/actions", { action: "hit", version: 1 });
     expect(bogus.statusCode).toBe(400);
   });
+
+  it("validates Mines and Plinko requests and never leaks the live seed", async () => {
+    const cookie = cookieFrom(await signUp({ email: email(), password: "correct horse battery", name: "Flo" }));
+    const post = (url: string, payload: unknown, origin: string | null = ORIGIN) =>
+      app.inject({
+        method: "POST",
+        url,
+        headers: { cookie, "content-type": "application/json", ...(origin ? { origin } : {}) },
+        payload: JSON.stringify(payload),
+      });
+
+    expect((await post("/v1/plinko/drops", { bet: 10, rows: 8, risk: "low", clientSeed: "a" }, null)).statusCode).toBe(403);
+    expect((await post("/v1/plinko/drops", { bet: 10, rows: 7, risk: "low", clientSeed: "a" })).statusCode).toBe(400);
+    expect((await post("/v1/plinko/drops", { bet: 10, rows: 8, risk: "wild", clientSeed: "a" })).statusCode).toBe(400);
+    expect((await post("/v1/plinko/drops", { bet: 9, rows: 8, risk: "low", clientSeed: "a" })).statusCode).toBe(400);
+    expect((await post("/v1/plinko/drops", { bet: 10, rows: 8, risk: "low", clientSeed: "a b" })).statusCode).toBe(400);
+    const drop = await post("/v1/plinko/drops", { bet: 10, rows: 8, risk: "low", clientSeed: "a" });
+    expect(drop.statusCode).toBe(200);
+    expect(drop.json().drop.path).toHaveLength(8);
+
+    expect((await post("/v1/mines/rounds", { bet: 10, mines: 0, clientSeed: "a" })).statusCode).toBe(400);
+    expect((await post("/v1/mines/rounds", { bet: 10, mines: 25, clientSeed: "a" })).statusCode).toBe(400);
+    const started = await post("/v1/mines/rounds", { bet: 10, mines: 3, clientSeed: "a" });
+    expect(started.statusCode).toBe(200);
+    expect(started.body).not.toContain("serverSeed");
+    const state = await post("/v1/mines/state", {});
+    expect(state.body).not.toContain("serverSeed");
+    expect(state.json().round.minePositions).toBeNull();
+    const id = started.json().round.id;
+    expect((await post(`/v1/mines/rounds/${id}/reveal`, { tile: -1, version: 1 })).statusCode).toBe(400);
+    expect((await post(`/v1/mines/rounds/${id}/reveal`, { tile: 1.5, version: 1 })).statusCode).toBe(400);
+  });
 });
+

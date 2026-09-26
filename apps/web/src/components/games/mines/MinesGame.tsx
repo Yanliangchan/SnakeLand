@@ -1,0 +1,344 @@
+"use client";
+
+import { AnimatePresence, motion } from "framer-motion";
+import { useEffect, useRef, useState } from "react";
+import {
+  INSTANT_BET_LIMITS,
+  MINES_MAX,
+  MINES_MIN,
+  MINES_TILES,
+  applyX100,
+  formatX100,
+  minesPositions,
+  type FairRevealDTO,
+  type MinesRoundDTO,
+  type MinesUpdateDTO,
+} from "@snakeland/shared";
+import { GameShell } from "@/components/GameShell";
+import { Button, WinCelebration } from "@/components/ui";
+import { ApiError } from "@/lib/api";
+import { cn } from "@/lib/cn";
+import { minesApi } from "@/lib/instant-api";
+import { fade, fadeUp, tap, tapTransition } from "@/lib/motion";
+import { useSession } from "@/providers/session";
+import { useSettings } from "@/providers/settings";
+import { ChipTray, StakeSummary, useChipSlip } from "../shared/ChipSlip";
+import { InstantFairness } from "../shared/InstantFairness";
+import { RecentMultipliers, type RecentItem } from "../shared/RecentMultipliers";
+import { useClientSeed } from "../shared/useClientSeed";
+import { Tile, type TileState } from "./Tile";
+
+const MINE_PRESETS = [1, 3, 5, 10, 24];
+
+function tileStates(round: MinesRoundDTO | null): TileState[] {
+  const states: TileState[] = Array(MINES_TILES).fill("hidden");
+  if (!round) return states;
+  for (const t of round.picks) states[t] = "gem";
+  if (round.status !== "playing" && round.minePositions) {
+    const mines = new Set(round.minePositions);
+    for (let t = 0; t < MINES_TILES; t++) {
+      if (states[t] === "gem") continue;
+      states[t] = t === round.bustTile ? "bust" : mines.has(t) ? "mine" : "gem-dim";
+    }
+  }
+  return states;
+}
+
+function message(e: unknown) {
+  if (e instanceof ApiError) return e.code === "INSUFFICIENT_FUNDS" ? "Not enough chips for that." : e.message;
+  return "Something went wrong. Try again.";
+}
+
+function MinesStepper({ value, onChange, disabled }: { value: number; onChange: (v: number) => void; disabled: boolean }) {
+  const btn = "grid size-9 place-items-center rounded-[10px] text-fg-muted transition-colors hairline hover:text-fg disabled:opacity-40";
+  return (
+    <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1.5">
+        <motion.button whileTap={tap} transition={tapTransition} className={btn} disabled={disabled || value <= MINES_MIN} onClick={() => onChange(value - 1)} aria-label="Fewer mines">
+          −
+        </motion.button>
+        <div className="flex w-16 flex-col items-center leading-tight">
+          <span className="text-[17px] font-semibold tabular">{value}</span>
+          <span className="text-[11px] text-fg-muted">{value === 1 ? "mine" : "mines"}</span>
+        </div>
+        <motion.button whileTap={tap} transition={tapTransition} className={btn} disabled={disabled || value >= MINES_MAX} onClick={() => onChange(value + 1)} aria-label="More mines">
+          +
+        </motion.button>
+      </div>
+      <div className="hidden gap-1 lg:flex">
+        {MINE_PRESETS.map((p) => (
+          <motion.button
+            key={p}
+            whileTap={tap}
+            transition={tapTransition}
+            disabled={disabled}
+            onClick={() => onChange(p)}
+            className={cn(
+              "h-8 min-w-8 rounded-[8px] px-2 text-[12px] font-medium tabular transition-colors hairline disabled:opacity-40",
+              p === value ? "bg-fg text-bg" : "text-fg-muted hover:text-fg",
+            )}
+          >
+            {p}
+          </motion.button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function MinesGame() {
+  const { me, setWallet } = useSession();
+  const { play } = useSettings();
+  const clientSeed = useClientSeed();
+  const balance = me?.wallet.balance ?? 0;
+  const slip = useChipSlip(Math.min(INSTANT_BET_LIMITS.max, balance));
+
+  const [round, setRound] = useState<MinesRoundDTO | null>(null);
+  const [nextCommit, setNextCommit] = useState<string | null>(null);
+  const [mines, setMines] = useState(3);
+  const [loaded, setLoaded] = useState(false);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [recent, setRecent] = useState<RecentItem[]>([]);
+  const [lastReveal, setLastReveal] = useState<{ reveal: FairRevealDTO; mines: number; positions: number[] } | null>(null);
+  const [fairOpen, setFairOpen] = useState(false);
+  const busy = useRef(false);
+
+  const playing = round?.status === "playing";
+  const setSlip = slip.set;
+
+  useEffect(() => {
+    let cancelled = false;
+    minesApi
+      .state()
+      .then((s) => {
+        if (cancelled) return;
+        setNextCommit(s.nextCommit);
+        if (s.round) {
+          setRound(s.round);
+          setMines(s.round.mines);
+          setSlip(s.round.bet);
+        }
+        setLoaded(true);
+      })
+      .catch((e: unknown) => !cancelled && setError(message(e)));
+    return () => {
+      cancelled = true;
+    };
+  }, [setSlip]);
+
+  function apply(u: MinesUpdateDTO) {
+    setRound(u.round);
+    setNextCommit(u.nextCommit);
+    if (u.balance !== null) setWallet({ balance: u.balance });
+    if (u.round.status !== "playing") {
+      const x100 = u.round.status === "bust" ? 0 : u.round.multiplierX100;
+      setRecent((r) => [{ id: u.round.id, x100 }, ...r].slice(0, 12));
+      if (u.round.reveal && u.round.minePositions) {
+        setLastReveal({ reveal: u.round.reveal, mines: u.round.mines, positions: u.round.minePositions });
+      }
+    }
+  }
+
+  async function run(fn: () => Promise<void>) {
+    if (busy.current) return;
+    busy.current = true;
+    setPending(true);
+    setError(null);
+    try {
+      await fn();
+    } catch (e) {
+      if (e instanceof ApiError && (e.code === "STALE_VERSION" || e.code === "ROUND_SETTLED")) {
+        const s = await minesApi.state();
+        setRound(s.round);
+        setNextCommit(s.nextCommit);
+      } else setError(message(e));
+    } finally {
+      busy.current = false;
+      setPending(false);
+    }
+  }
+
+  const start = () =>
+    run(async () => {
+      if (slip.amount < INSTANT_BET_LIMITS.min) return setError(`Minimum bet is ${INSTANT_BET_LIMITS.min}.`);
+      apply(await minesApi.start({ bet: slip.amount, mines, clientSeed: clientSeed.next() }));
+    });
+
+  const pick = (tile: number) =>
+    run(async () => {
+      if (!round || round.status !== "playing") return;
+      const u = await minesApi.reveal(round.id, tile, round.version);
+      play(u.round.status === "bust" ? "click" : "flip");
+      apply(u);
+    });
+
+  const pickRandom = () => {
+    if (!round) return;
+    const open = Array.from({ length: MINES_TILES }, (_, i) => i).filter((i) => !round.picks.includes(i));
+    const tile = open[crypto.getRandomValues(new Uint32Array(1))[0]! % open.length];
+    if (tile !== undefined) void pick(tile);
+  };
+
+  const cashOut = () =>
+    run(async () => {
+      if (!round || round.status !== "playing") return;
+      apply(await minesApi.cashOut(round.id, round.version));
+    });
+
+  // Keyboard: Enter bets or cashes out, R picks a random tile.
+  const keys = useRef<(e: KeyboardEvent) => void>(() => {});
+  useEffect(() => {
+    keys.current = (e) => {
+      if (fairOpen || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.target instanceof HTMLElement && e.target.closest("input, textarea, button")) return;
+      if (e.key === "Enter") {
+        e.preventDefault();
+        void (playing ? cashOut() : start());
+      } else if (e.key.toLowerCase() === "r" && playing) {
+        e.preventDefault();
+        pickRandom();
+      }
+    };
+  });
+  useEffect(() => {
+    const l = (e: KeyboardEvent) => keys.current(e);
+    window.addEventListener("keydown", l);
+    return () => window.removeEventListener("keydown", l);
+  }, []);
+
+  const states = tileStates(round);
+  const cashValue = round ? applyX100(round.bet, round.multiplierX100) : 0;
+  const ended = round && round.status !== "playing";
+  const outcomeOk = lastReveal
+    ? JSON.stringify(minesPositions(lastReveal.reveal.serverSeed, lastReveal.reveal.clientSeed, lastReveal.mines)) ===
+      JSON.stringify(lastReveal.positions)
+    : null;
+
+  return (
+    <>
+      <GameShell
+        title="Mines"
+        tableId="mines"
+        controls={
+          <div className="flex flex-col gap-3">
+            <AnimatePresence>
+              {error && (
+                <motion.p {...fadeUp} role="alert" className="text-center text-[13px] text-loss">
+                  {error}
+                </motion.p>
+              )}
+            </AnimatePresence>
+            <AnimatePresence mode="wait" initial={false}>
+              {playing ? (
+                <motion.div key="playing" {...fadeUp} className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:justify-end">
+                  <p className="col-span-2 text-[13px] text-fg-muted sm:mr-auto">
+                    {round.picks.length === 0
+                      ? "Pick a tile. Cash out whenever you like."
+                      : `${round.picks.length} safe · next pick pays ${round.nextMultiplierX100 ? formatX100(round.nextMultiplierX100) : "—"}`}
+                  </p>
+                  <Button variant="secondary" onClick={pickRandom} disabled={pending}>
+                    Random
+                  </Button>
+                  <Button className="sm:min-w-44" onClick={cashOut} disabled={pending || round.picks.length === 0}>
+                    Cash out {round.picks.length > 0 ? cashValue.toLocaleString() : ""}
+                  </Button>
+                </motion.div>
+              ) : (
+                <motion.div key="idle" {...fadeUp} className="flex flex-col gap-3">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <ChipTray slip={slip} disabled={pending || !loaded} />
+                    <MinesStepper value={mines} onChange={setMines} disabled={pending || !loaded} />
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="min-w-0 flex-1">
+                      <StakeSummary slip={slip} limit={Math.min(INSTANT_BET_LIMITS.max, balance)} disabled={pending} />
+                    </div>
+                    <Button className="min-w-28 sm:min-w-36" onClick={start} loading={pending} disabled={!loaded || slip.amount < INSTANT_BET_LIMITS.min}>
+                      Bet
+                    </Button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        }
+      >
+        <div className="mx-auto flex w-full max-w-[480px] flex-col gap-5">
+          <div className="flex items-center justify-between gap-3">
+            <RecentMultipliers items={recent} />
+            <button
+              onClick={() => setFairOpen(true)}
+              className="shrink-0 rounded-full px-3 py-1 text-[12px] text-fg-muted transition-colors hairline hover:text-fg"
+            >
+              Fair
+            </button>
+          </div>
+
+          <div className="flex h-16 items-end justify-between">
+            <div>
+              <p className="text-[12px] text-fg-muted">Multiplier</p>
+              <WinCelebration
+                trigger={round?.status === "cashed_out" ? round.id : null}
+                multiplier={round?.status === "cashed_out" ? round.multiplierX100 / 100 : 0}
+              >
+                <AnimatePresence mode="popLayout" initial={false}>
+                  <motion.p
+                    key={`${round?.id}-${round?.multiplierX100}-${round?.status}`}
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -6 }}
+                    transition={{ duration: 0.2 }}
+                    className={cn(
+                      "text-[32px] font-semibold leading-none tracking-[-0.03em] tabular",
+                      round?.status === "cashed_out" ? "text-win" : round?.status === "bust" ? "text-loss" : "text-fg",
+                    )}
+                  >
+                    {round?.status === "bust" ? "Bust" : formatX100(round?.multiplierX100 ?? 100)}
+                  </motion.p>
+                </AnimatePresence>
+              </WinCelebration>
+            </div>
+            <AnimatePresence mode="wait">
+              {ended && (
+                <motion.p key={round.id} {...fade} className={cn("text-[15px] font-medium tabular", round.status === "bust" ? "text-loss" : "text-win")}>
+                  {round.status === "bust"
+                    ? `−${round.bet.toLocaleString()}`
+                    : `+${((round.payout ?? 0) - round.bet).toLocaleString()}`}
+                </motion.p>
+              )}
+              {playing && round.picks.length > 0 && (
+                <motion.p key="profit" {...fade} className="text-[15px] font-medium text-fg-muted tabular">
+                  Profit {(cashValue - round.bet).toLocaleString()}
+                </motion.p>
+              )}
+            </AnimatePresence>
+          </div>
+
+          <div className="grid grid-cols-5 gap-2 sm:gap-2.5">
+            {states.map((s, i) => (
+              <Tile
+                key={i}
+                index={i}
+                state={s}
+                disabled={!playing || pending}
+                onPick={pick}
+                // Stagger the end-of-round reveal outward from the last tile opened.
+                delay={ended && !round.picks.includes(i) && i !== round.bustTile ? 0.15 + (i % 5) * 0.02 + Math.floor(i / 5) * 0.02 : 0}
+              />
+            ))}
+          </div>
+        </div>
+      </GameShell>
+      <InstantFairness
+        open={fairOpen}
+        onClose={() => setFairOpen(false)}
+        nextCommit={nextCommit}
+        clientSeed={clientSeed}
+        last={lastReveal?.reveal ?? null}
+        outcomeLabel="Mines verified"
+        outcomeOk={outcomeOk}
+      />
+    </>
+  );
+}

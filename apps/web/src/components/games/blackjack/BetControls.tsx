@@ -2,8 +2,9 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { BLACKJACK_RULES, type BlackjackAction, type BlackjackRoundDTO } from "@snakeland/shared";
-import { Button, Chip, CHIP_VALUES, type ChipValue } from "@/components/ui";
+import { Button } from "@/components/ui";
 import { fadeUp } from "@/lib/motion";
+import { ChipTray, type ChipSlip } from "../shared/ChipSlip";
 
 export type Mode = "loading" | "bet" | "insurance" | "play" | "settled";
 
@@ -26,27 +27,18 @@ function Kbd({ children }: { children: React.ReactNode }) {
 export function BetControls({
   mode,
   round,
-  tray,
-  bet,
-  room,
+  slip,
   pending,
   error,
-  onChip,
-  onClear,
   onDeal,
   onAction,
   onChangeBet,
 }: {
   mode: Mode;
   round: BlackjackRoundDTO | null;
-  tray: Record<ChipValue, string>;
-  bet: number;
-  /** Chips still addable (limited by table max and balance). */
-  room: number;
+  slip: ChipSlip;
   pending: boolean;
   error: string | null;
-  onChip: (value: ChipValue) => void;
-  onClear: () => void;
   onDeal: () => void;
   onAction: (action: BlackjackAction) => void;
   onChangeBet: () => void;
@@ -63,16 +55,12 @@ export function BetControls({
       <AnimatePresence mode="wait" initial={false}>
         {mode === "bet" && (
           <motion.div key="bet" {...fadeUp} className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center justify-between gap-1.5 sm:justify-start sm:gap-2">
-              {CHIP_VALUES.map((v) => (
-                <Chip key={tray[v]} chipId={tray[v]} value={v} disabled={v > room || pending} onClick={() => onChip(v)} />
-              ))}
-            </div>
+            <ChipTray slip={slip} disabled={pending} />
             <div className="flex items-center gap-2">
-              <Button variant="ghost" onClick={onClear} disabled={bet === 0 || pending}>
+              <Button variant="ghost" onClick={slip.clear} disabled={slip.amount === 0 || pending}>
                 Clear
               </Button>
-              <Button className="flex-1 sm:flex-none sm:min-w-36" onClick={onDeal} loading={pending} disabled={bet < BLACKJACK_RULES.minBet}>
+              <Button className="flex-1 sm:flex-none sm:min-w-36" onClick={onDeal} loading={pending} disabled={slip.amount < BLACKJACK_RULES.minBet}>
                 Deal <Kbd>↵</Kbd>
               </Button>
             </div>
@@ -117,8 +105,8 @@ export function BetControls({
             <Button variant="secondary" onClick={onChangeBet} disabled={pending}>
               Change bet
             </Button>
-            <Button className="sm:min-w-40" onClick={onDeal} loading={pending} disabled={bet < BLACKJACK_RULES.minBet}>
-              Deal {bet.toLocaleString()} <Kbd>↵</Kbd>
+            <Button className="sm:min-w-40" onClick={onDeal} loading={pending} disabled={slip.amount < BLACKJACK_RULES.minBet}>
+              Deal {slip.amount.toLocaleString()} <Kbd>↵</Kbd>
             </Button>
           </motion.div>
         )}
