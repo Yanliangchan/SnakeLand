@@ -148,10 +148,27 @@ describe("Purge", () => {
     expect(await wallet.ledgerSum(player)).toBe((await wallet.getWallet(player)).balance);
   });
 
-  it("closes guests that have been gone for a week", async () => {
-    const guest = await createUser(db, { anonymous: true });
-    expect(await purge.purgeInactiveGuests(new Date(Date.now() + 8 * DAY))).toBeGreaterThan(0);
-    expect(await db.select().from(users).where(eq(users.id, guest))).toHaveLength(0);
+  it("closes guests after 24 hours without any activity", async () => {
+    const HOUR = 3_600_000;
+    const guestAt = async (hoursAgo: number) => {
+      const id = crypto.randomUUID();
+      await db.insert(users).values({
+        id,
+        name: "Guest",
+        email: `${id}@guest.test`,
+        isAnonymous: true,
+        createdAt: new Date(Date.now() - hoursAgo * HOUR),
+      });
+      return id;
+    };
+    const gone = await guestAt(30); // arrived yesterday, never came back
+    const busy = await guestAt(30); // arrived yesterday, still playing
+    const fresh = await guestAt(1); // arrived an hour ago
+    await wallet.apply({ userId: busy, amount: -10, type: "bet", game: "plinko", roundId: crypto.randomUUID() });
+
+    expect(await purge.purgeInactiveGuests()).toBeGreaterThan(0);
+    const left = await db.select({ id: users.id }).from(users).where(inArray(users.id, [gone, busy, fresh]));
+    expect(left.map((u) => u.id).sort()).toEqual([busy, fresh].sort());
   });
 });
 

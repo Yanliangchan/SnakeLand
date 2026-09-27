@@ -2,7 +2,7 @@ import { sql } from "drizzle-orm";
 import type { Db, Tx } from "../db/client";
 
 export const GAME_DATA_RETENTION_DAYS = 7;
-export const GUEST_INACTIVE_DAYS = 3;
+export const GUEST_INACTIVE_HOURS = 24;
 const BATCH = 2_000;
 
 export interface PurgeReport {
@@ -71,14 +71,19 @@ export class PurgeService {
     for (const statement of statements) await tx.execute(statement);
   }
 
-  /** Guests with no session activity for a few days: they left without saying so. */
+  /**
+   * Guests who left without signing out: nothing for 24 hours (no bet,
+   * claim or session refresh). A browser can't reliably tell us a tab closed
+   * for good, so inactivity is the signal.
+   */
   async purgeInactiveGuests(now = new Date()): Promise<number> {
-    const cutoff = new Date(now.getTime() - GUEST_INACTIVE_DAYS * 86_400_000);
+    const cutoff = new Date(now.getTime() - GUEST_INACTIVE_HOURS * 3_600_000);
     const stale = await this.db.execute<{ id: string }>(sql`
       SELECT u.id FROM users u
       WHERE u.is_anonymous = true
-        AND u.updated_at < ${cutoff}
+        AND u.created_at < ${cutoff}
         AND NOT EXISTS (SELECT 1 FROM sessions s WHERE s.user_id = u.id AND s.updated_at >= ${cutoff})
+        AND NOT EXISTS (SELECT 1 FROM transactions t WHERE t.user_id = u.id AND t.created_at >= ${cutoff})
       LIMIT 500`);
     let n = 0;
     for (const { id } of stale.rows) if (await this.purgeGuest(id)) n++;
