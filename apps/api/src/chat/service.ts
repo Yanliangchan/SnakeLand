@@ -139,6 +139,7 @@ export class ChatService {
       throw new GameError(429, "SLOW_DOWN", "Slow down a little");
     const message: ChatMessageDTO = {
       id: randomUUID(),
+      kind: "user",
       userId: user.id,
       name: user.name,
       text,
@@ -151,5 +152,31 @@ export class ChatService {
       message: { type: "chat", message } satisfies ChatPushDTO,
     } satisfies LiveBusMessage);
     return message;
+  }
+
+  /** Post a system line (tips, rain, notices). Not rate-limited; not user-authored. */
+  async system(room: LiveRoom, text: string): Promise<ChatMessageDTO> {
+    const message: ChatMessageDTO = {
+      id: randomUUID(),
+      kind: "system",
+      userId: "",
+      name: "",
+      text: text.slice(0, 300),
+      at: new Date().toISOString(),
+    };
+    await this.store.append(room, message);
+    await this.bus.publish({
+      kind: "room",
+      room,
+      message: { type: "chat", message } satisfies ChatPushDTO,
+    } satisfies LiveBusMessage);
+    return message;
+  }
+
+  /** Distinct registered authors from a room's recent history (for rain splits). */
+  async recentAuthors(room: LiveRoom, limit = 30): Promise<{ id: string; name: string }[]> {
+    const seen = new Map<string, string>();
+    for (const m of await this.store.history(room)) if (m.userId && !seen.has(m.userId)) seen.set(m.userId, m.name);
+    return [...seen].slice(0, limit).map(([id, name]) => ({ id, name }));
   }
 }

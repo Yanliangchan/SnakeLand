@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import {
   LAB_CATEGORIES,
   LAB_FLAG_RE,
+  LAB_TRACK_BONUS_PCT,
   type LabCategory,
   type LabChallengeDTO,
   type LabDifficulty,
@@ -128,7 +129,13 @@ function ChallengeSheet({
         setStatus({ kind: "err", text: "Not quite. Keep digging." });
       } else {
         play("bigwin");
-        setStatus({ kind: "ok", text: r.reward ? `Solved! +${r.reward.toLocaleString()} chips` : "Correct. You've already been paid for this one." });
+        setStatus({
+          kind: "ok",
+          text: r.reward
+            ? `Solved! +${r.reward.toLocaleString()} chips` +
+              (r.trackBonus ? ` · Track "${r.trackBonus.track}" complete: +${r.trackBonus.amount.toLocaleString()} bonus` : "")
+            : "Correct. You've already been paid for this one.",
+        });
         setFlag("");
         onSolved(c.slug, r);
       }
@@ -276,6 +283,7 @@ export function LabView() {
   const [reload, setReload] = useState(0);
   const [filter, setFilter] = useState<LabCategory | "all">("all");
   const [openSlug, setOpenSlug] = useState<string | null>(null);
+  const [track, setTrack] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -296,7 +304,7 @@ export function LabView() {
     setData((d) =>
       d && {
         ...d,
-        earned: d.earned + (r.reward ?? 0),
+        earned: d.earned + (r.reward ?? 0) + (r.trackBonus?.amount ?? 0),
         challenges: d.challenges.map((c) =>
           c.slug === slug ? { ...c, solved: true, solves: c.solves + (r.reward ? 1 : 0), hints: c.hints.map((h) => h) } : c,
         ),
@@ -317,7 +325,17 @@ export function LabView() {
     );
   };
 
-  const shown = data?.challenges.filter((c) => filter === "all" || c.category === filter) ?? [];
+  const shown = data?.challenges.filter((c) => (filter === "all" || c.category === filter) && (!track || c.track === track)) ?? [];
+  // Tracks group challenges; finishing every one pays a bonus on top.
+  const tracks = [...new Set(data?.challenges.flatMap((c) => (c.track ? [c.track] : [])) ?? [])].map((name) => {
+    const items = data!.challenges.filter((c) => c.track === name);
+    return {
+      name,
+      total: items.length,
+      done: items.filter((c) => c.solved).length,
+      bonus: Math.floor((items.reduce((sum, c) => sum + c.reward, 0) * LAB_TRACK_BONUS_PCT) / 100),
+    };
+  });
   const solved = data?.challenges.filter((c) => c.solved).length ?? 0;
   const open = data?.challenges.find((c) => c.slug === openSlug) ?? null;
 
@@ -363,6 +381,42 @@ export function LabView() {
               Create account
             </ButtonLink>
           </Card>
+        )}
+
+        {tracks.length > 0 && (
+          <div className="mt-6">
+            <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-fg-muted">Tracks</p>
+            <div className="mt-2 flex gap-3 overflow-x-auto pb-1">
+              {tracks.map((t) => {
+                const complete = t.done === t.total;
+                const active = track === t.name;
+                return (
+                  <button
+                    key={t.name}
+                    onClick={() => setTrack(active ? null : t.name)}
+                    aria-pressed={active}
+                    className={cn(
+                      "flex min-w-[190px] flex-col gap-2 rounded-[var(--radius-card)] bg-surface p-3.5 text-left transition-colors hairline hover:bg-elevated",
+                      active && "border-fg/50 bg-elevated",
+                    )}
+                  >
+                    <span className="flex items-center justify-between gap-2">
+                      <span className="truncate text-[14px] font-semibold">{t.name}</span>
+                      <span className={cn("text-[12px] tabular", complete ? "text-win" : "text-fg-muted")}>
+                        {t.done}/{t.total}
+                      </span>
+                    </span>
+                    <span className="h-1.5 overflow-hidden rounded-full bg-elevated">
+                      <span className={cn("block h-full rounded-full", complete ? "bg-win" : "bg-gold")} style={{ width: `${(t.done / t.total) * 100}%` }} />
+                    </span>
+                    <span className="text-[12px] text-fg-muted">
+                      {complete ? "Complete · bonus paid" : `Finish for +${t.bonus.toLocaleString()} bonus`}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         )}
 
         <div className="mt-6 overflow-x-auto">

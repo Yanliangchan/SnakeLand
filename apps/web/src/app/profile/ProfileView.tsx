@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import { ALL_TIME_PERKS, GAMES, isGameId, type ProfileDTO } from "@snakeland/shared";
 import { GameDonut } from "@/components/GameDonut";
+import { InviteCard } from "@/components/InviteCard";
 import { AppHeader } from "@/components/AppHeader";
 import { ErrorState } from "@/components/ErrorState";
 import { NAME_COLOUR, PlayerName, TitleBadge } from "@/components/PlayerName";
@@ -114,6 +115,8 @@ export function ProfileView() {
             </ButtonLink>
           </motion.div>
         )}
+
+        {!me.user.isGuest && <InviteCard />}
 
         {error && !p && <ErrorState title="Couldn’t load your profile" onRetry={() => setReload((n) => n + 1)} />}
 

@@ -20,6 +20,11 @@ const LABEL: Record<TransactionType, string> = {
   guest_merge: "Carried over from guest",
   admin_adjust: "Adjustment",
   lab_reward: "Lab reward",
+  bonus_spin: "Bonus wheel",
+  referral: "Invite bonus",
+  tip: "Tip",
+  rain: "Chat rain",
+  lab_track: "Lab track bonus",
 };
 
 const timeFmt = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });

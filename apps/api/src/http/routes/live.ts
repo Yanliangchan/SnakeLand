@@ -1,10 +1,11 @@
 import type { FastifyInstance } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
-import { CHAT_MAX_LENGTH, LIVE_ROOMS } from "@snakeland/shared";
+import { CHAT_MAX_LENGTH, LIVE_ROOMS, TIP_MAX, TIP_MIN } from "@snakeland/shared";
 import { fromNodeHeaders } from "better-auth/node";
 import type { Auth } from "../../auth";
 import type { ChatService } from "../../chat/service";
+import type { EngagementService } from "../../engagement/service";
 import type { LiveHub } from "../../realtime/live-hub";
 import type { TicketStore } from "../../realtime/tickets";
 import { requireUser } from "../session";
@@ -12,7 +13,7 @@ import { requireUser } from "../session";
 /** The one WebSocket for live games (roulette wheels and crash). */
 export async function liveRoutes(
   app: FastifyInstance,
-  opts: { auth: Auth; hub: LiveHub; tickets: TicketStore; webOrigins: string[]; chat: ChatService },
+  opts: { auth: Auth; hub: LiveHub; tickets: TicketStore; webOrigins: string[]; chat: ChatService; engagement: EngagementService },
 ) {
   // Browsers don't apply CORS to WebSockets, so check Origin here
   // (cross-site WebSocket hijacking). Authenticate with a single-use ticket
@@ -63,6 +64,19 @@ export async function liveRoutes(
         schema: { params: room, body: z.object({ text: z.string().min(1).max(CHAT_MAX_LENGTH * 2) }) },
       },
       async (request) => ({ message: await opts.chat.post(request.user!, request.params.room, request.body.text) }),
+    );
+
+    // Tip another player in the room.
+    r.post(
+      "/v1/live/chat/:room/tip",
+      {
+        config: { rateLimit: { max: 20, timeWindow: "1 minute" } },
+        schema: {
+          params: room,
+          body: z.object({ toUserId: z.string().min(1).max(64), amount: z.number().int().min(TIP_MIN).max(TIP_MAX) }),
+        },
+      },
+      async (request) => opts.engagement.tip(request.user!, request.params.room, request.body.toUserId, request.body.amount),
     );
   });
 }

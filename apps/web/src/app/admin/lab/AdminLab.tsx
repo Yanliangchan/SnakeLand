@@ -24,6 +24,7 @@ const blank = (): AdminLabChallengeInput => ({
   title: "",
   category: "crypto",
   difficulty: "easy",
+  track: null,
   description: "",
   hints: [],
   reward: LAB_REWARDS.easy,
@@ -128,6 +129,15 @@ function Editor({
                 </option>
               ))}
             </select>
+          </Label>
+          <Label text="Track (optional; finishing a track pays a bonus)">
+            <input
+              className={input}
+              value={v.track ?? ""}
+              onChange={(e) => set("track", e.target.value || null)}
+              maxLength={40}
+              placeholder="e.g. Web basics"
+            />
           </Label>
           <Label text="Reward (chips)">
             <input
@@ -370,7 +380,8 @@ export function AdminLab() {
                       {!c.published && <span className="rounded-full px-2 py-0.5 text-[10px] text-fg-muted hairline">Draft</span>}
                     </p>
                     <p className="text-[12px] text-fg-muted">
-                      <span className="font-mono">{c.slug}</span> · {c.category} · {c.difficulty} · {c.reward.toLocaleString()} chips ·{" "}
+                      <span className="font-mono">{c.slug}</span>
+                      {c.track && ` · ${c.track}`} · {c.category} · {c.difficulty} · {c.reward.toLocaleString()} chips ·{" "}
                       {c.flagMode === "per_player" ? "per-player flag" : "static flag"} · {c.solves} solves
                     </p>
                   </div>

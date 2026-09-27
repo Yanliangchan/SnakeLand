@@ -1,8 +1,14 @@
+import { randomInt } from "node:crypto";
 import { and, desc, eq, lt, or, sql } from "drizzle-orm";
 import {
   DAILY_CLAIM_AMOUNT,
   DAILY_COOLDOWN_HOURS,
   MAX_BALANCE,
+  SPIN_BASE,
+  SPIN_COOLDOWN_HOURS,
+  spinSegments,
+  type SpinResultDTO,
+  type SpinStateDTO,
   STARTING_BALANCE,
   isChipAmount,
   type Chips,
@@ -210,6 +216,51 @@ export class WalletService {
         tx,
       );
       return { ...result, nextDailyClaimAt: next.toISOString() };
+    });
+  }
+
+  /** The daily bonus wheel's state for a player. */
+  async spinState(userId: string): Promise<SpinStateDTO> {
+    const [w] = await this.db
+      .select({ lastSpinAt: wallets.lastSpinAt, spinStreak: wallets.spinStreak })
+      .from(wallets)
+      .where(eq(wallets.userId, userId));
+    return this.spinStateFrom(w?.lastSpinAt ?? null, w?.spinStreak ?? 0, this.clock());
+  }
+
+  private spinStateFrom(lastSpinAt: Date | null, storedStreak: number, now: Date): SpinStateDTO {
+    const cooldownMs = SPIN_COOLDOWN_HOURS * 3_600_000;
+    const ready = !lastSpinAt || now.getTime() - lastSpinAt.getTime() >= cooldownMs;
+    // Streak the next spin would be at: continues if within a day-ish window, else restarts.
+    const nextStreak = !lastSpinAt || now.getTime() - lastSpinAt.getTime() > 2 * cooldownMs ? 1 : storedStreak + (ready ? 1 : 0);
+    return {
+      canSpin: ready,
+      nextSpinAt: ready ? null : new Date(lastSpinAt!.getTime() + cooldownMs).toISOString(),
+      streak: Math.max(1, ready ? nextStreak : storedStreak),
+      segments: spinSegments(Math.max(1, ready ? nextStreak : storedStreak)),
+    };
+  }
+
+  /** Take the daily spin: pick a segment, credit it, advance the streak. */
+  async spinBonus(userId: string): Promise<SpinResultDTO> {
+    const cooldownMs = SPIN_COOLDOWN_HOURS * 3_600_000;
+    return this.db.transaction(async (tx) => {
+      const wallet = await this.lock(tx, userId);
+      const now = this.clock();
+      const last = wallet.lastSpinAt;
+      if (last && now.getTime() - last.getTime() < cooldownMs) {
+        throw new WalletError("SPIN_NOT_READY", "Your bonus spin isn't ready yet", {
+          nextSpinAt: new Date(last.getTime() + cooldownMs).toISOString(),
+        });
+      }
+      const streak = !last || now.getTime() - last.getTime() > 2 * cooldownMs ? 1 : wallet.spinStreak + 1;
+      const segments = spinSegments(streak);
+      const index = randomInt(SPIN_BASE.length);
+      const amount = segments[index]!;
+      const next = new Date(now.getTime() + cooldownMs);
+      await tx.update(wallets).set({ lastSpinAt: now, spinStreak: streak }).where(eq(wallets.userId, userId));
+      const result = await this.apply({ userId, amount, type: "bonus_spin", meta: { index, streak } }, tx);
+      return { index, amount, balance: result.balance, streak, nextSpinAt: next.toISOString(), segments };
     });
   }
 

@@ -26,6 +26,11 @@ export const TRANSACTION_TYPES = [
   "guest_merge",
   "admin_adjust",
   "lab_reward",
+  "bonus_spin",
+  "referral",
+  "tip",
+  "rain",
+  "lab_track",
 ] as const;
 export type TransactionType = (typeof TRANSACTION_TYPES)[number];
 

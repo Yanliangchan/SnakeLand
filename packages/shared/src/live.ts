@@ -19,10 +19,13 @@ export const CHAT_HISTORY = 50;
 
 export interface ChatMessageDTO {
   id: string;
+  /** Empty for system lines (tips, rain, admin notices). */
   userId: string;
   name: string;
   text: string;
   at: string;
+  /** "user" (default) or "system" (tips, rain, notices). */
+  kind?: "user" | "system";
 }
 
 export interface ChatHistoryDTO {

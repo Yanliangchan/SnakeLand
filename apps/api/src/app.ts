@@ -37,6 +37,8 @@ import { pushRoutes } from "./http/routes/push";
 import { LabService } from "./lab/service";
 import { ChatService, MemoryChatStore, RedisChatStore } from "./chat/service";
 import { PushService } from "./push/service";
+import { EngagementService } from "./engagement/service";
+import { engagementRoutes } from "./http/routes/engagement";
 import { MemoryAdminStore, RedisAdminStore } from "./admin/auth";
 import { AdminService } from "./admin/service";
 import { MaintenanceRunner } from "./maintenance/runner";
@@ -56,6 +58,7 @@ const WALLET_ERROR_STATUS: Record<WalletError["code"], number> = {
   BALANCE_LIMIT: 409,
   INVALID_AMOUNT: 400,
   DAILY_CLAIM_NOT_READY: 409,
+  SPIN_NOT_READY: 409,
   WALLET_NOT_FOUND: 404,
   INVALID_CURSOR: 400,
 };
@@ -130,6 +133,7 @@ export async function buildApp({ env, db, redis }: { env: Env; db: Db; redis: Re
   });
   const tickets = redis ? new RedisTicketStore(redis) : new MemoryTicketStore();
   const chat = new ChatService(db, redis ? new RedisChatStore(redis) : new MemoryChatStore(), bus);
+  const engagement = new EngagementService(db, wallet, chat);
 
   const progress = new ProgressService(db, wallet);
   const push = new PushService(
@@ -237,15 +241,17 @@ export async function buildApp({ env, db, redis }: { env: Env; db: Db; redis: Re
   await app.register(blackjackRoutes, { auth, blackjack });
   await app.register(instantRoutes, { auth, mines, plinko });
   await app.register(baccaratRoutes, { auth, baccarat });
-  await app.register(liveRoutes, { auth, hub, tickets, webOrigins: env.WEB_ORIGINS, chat });
+  await app.register(liveRoutes, { auth, hub, tickets, webOrigins: env.WEB_ORIGINS, chat, engagement });
   await app.register(rouletteRoutes, { auth, roulette });
   await app.register(crashRoutes, { auth, crash });
   await app.register(arcadeRoutes, { auth, carrier, ladder });
   await app.register(progressRoutes, { auth, progress, purge });
   await app.register(pushRoutes, { auth, push });
+  await app.register(engagementRoutes, { auth, wallet, engagement });
   await app.register(labRoutes, { auth, lab, secureCookies: env.NODE_ENV === "production" });
   await app.register(adminRoutes, {
     lab,
+    engagement,
     passwordHash: env.ADMIN_PASSWORD_HASH,
     secureCookies: env.NODE_ENV === "production",
     store: adminStore,
@@ -254,5 +260,5 @@ export async function buildApp({ env, db, redis }: { env: Env; db: Db; redis: Re
     purge,
   });
 
-  return { app, auth, wallet, blackjack, mines, plinko, baccarat, roulette, dealer, carrier, ladder, crash, crashDealer, progress, purge, maintenance, admin, presence, lab, chat, push };
+  return { app, auth, wallet, blackjack, mines, plinko, baccarat, roulette, dealer, carrier, ladder, crash, crashDealer, progress, purge, maintenance, admin, presence, lab, chat, push, engagement };
 }

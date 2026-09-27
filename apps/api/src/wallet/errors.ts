@@ -3,6 +3,7 @@ export type WalletErrorCode =
   | "BALANCE_LIMIT"
   | "INVALID_AMOUNT"
   | "DAILY_CLAIM_NOT_READY"
+  | "SPIN_NOT_READY"
   | "WALLET_NOT_FOUND"
   | "INVALID_CURSOR";
 

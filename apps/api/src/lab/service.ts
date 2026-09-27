@@ -3,6 +3,7 @@ import { and, asc, count, eq, inArray, sql } from "drizzle-orm";
 import {
   LAB_FLAG_RE,
   LAB_MAX_HINT_PENALTY,
+  LAB_TRACK_BONUS_PCT,
   labRewardAfterHints,
   type AdminLabChallengeDTO,
   type AdminLabChallengeInput,
@@ -68,6 +69,7 @@ export class LabService {
           title: c.title,
           category: c.category,
           difficulty: c.difficulty,
+          track: null,
           description: c.description,
           hints: c.hints,
           files: c.files,
@@ -117,6 +119,7 @@ export class LabService {
       title: row.title,
       category: row.category as LabCategory,
       difficulty: row.difficulty as LabDifficulty,
+      track: row.track,
       description: row.description,
       hints,
       reward: row.reward,
@@ -183,7 +186,7 @@ export class LabService {
     mustPlay(user);
     const flag = submitted.trim();
     const row = await this.published(slug);
-    const miss: LabSubmitResultDTO = { correct: false, reward: null, balance: null, alreadySolved: false };
+    const miss: LabSubmitResultDTO = { correct: false, reward: null, balance: null, alreadySolved: false, trackBonus: null };
     if (!LAB_FLAG_RE.test(flag)) return miss;
     const expected = row.flagMode === "per_player" ? hashFlag(this.flagFor(user.id, row.slug)) : row.flagHash!;
     if (!flagsMatch(flag, expected)) return miss;
@@ -197,13 +200,35 @@ export class LabService {
         .values({ userId: user.id, challengeId: row.id, reward })
         .onConflictDoNothing()
         .returning({ id: labSolves.id });
-      if (!solve) return { correct: true, reward: null, balance: null, alreadySolved: true };
+      if (!solve) return { correct: true, reward: null, balance: null, alreadySolved: true, trackBonus: null };
       const credit = await this.wallet.apply(
         { userId: user.id, amount: reward, type: "lab_reward", idempotencyKey: `lab:${row.id}`, meta: { challenge: row.slug } },
         tx,
       );
-      return { correct: true, reward, balance: credit.balance, alreadySolved: false };
+      const trackBonus = row.track ? await this.awardTrackBonus(tx, user.id, row.track) : null;
+      return { correct: true, reward, balance: credit.balance, alreadySolved: false, trackBonus };
     });
+  }
+
+  /** If this solve completed a whole track, pay a one-time bonus. Returns it, or null. */
+  private async awardTrackBonus(tx: Tx, userId: string, track: string): Promise<{ track: string; amount: number } | null> {
+    const inTrack = await tx
+      .select({ id: labChallenges.id, reward: labChallenges.reward })
+      .from(labChallenges)
+      .where(and(eq(labChallenges.track, track), eq(labChallenges.published, true)));
+    if (inTrack.length === 0) return null;
+    const solved = await tx
+      .select({ id: labSolves.challengeId })
+      .from(labSolves)
+      .where(and(eq(labSolves.userId, userId), inArray(labSolves.challengeId, inTrack.map((c) => c.id))));
+    if (solved.length < inTrack.length) return null;
+    const amount = Math.max(1, Math.floor((inTrack.reduce((s, c) => s + c.reward, 0) * LAB_TRACK_BONUS_PCT) / 100));
+    // Idempotent: paid once per player per track.
+    const res = await this.wallet.apply(
+      { userId, amount, type: "lab_track", idempotencyKey: `lab-track:${userId}:${track}`, meta: { track } },
+      tx,
+    );
+    return res.applied ? { track, amount } : null;
   }
 
   private async openedInTx(tx: Tx, userId: string, challengeId: string): Promise<Set<number>> {
@@ -252,6 +277,7 @@ export class LabService {
       title: c.title,
       category: c.category as LabCategory,
       difficulty: c.difficulty as LabDifficulty,
+      track: c.track,
       description: c.description,
       reward: c.reward,
       flagMode: c.flagMode as LabFlagMode,
@@ -272,6 +298,7 @@ export class LabService {
       title: input.title,
       category: input.category,
       difficulty: input.difficulty,
+      track: input.track,
       description: input.description,
       hints: input.hints,
       reward: input.reward,

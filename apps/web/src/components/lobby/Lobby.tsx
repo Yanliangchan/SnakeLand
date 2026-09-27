@@ -4,11 +4,13 @@ import { AnimatePresence, motion } from "framer-motion";
 import Link from "next/link";
 import { GAMES, GAME_IDS } from "@snakeland/shared";
 import { AppHeader } from "@/components/AppHeader";
+import { AnnouncementBanner } from "@/components/AnnouncementBanner";
 import { GameGlyph } from "@/components/GameGlyph";
 import { GAME_ACCENT } from "@/lib/games-ui";
 import { BalanceCounter } from "@/components/ui";
 import { expoOut, fadeUp, tap, tapTransition } from "@/lib/motion";
 import { useSession } from "@/providers/session";
+import { BonusSpin } from "./BonusSpin";
 import { DailyClaim } from "./DailyClaim";
 import { WelcomeModal } from "./WelcomeModal";
 
@@ -24,6 +26,7 @@ export function Lobby() {
 
   return (
     <div className="min-h-dvh">
+      <AnnouncementBanner />
       <AppHeader />
       <WelcomeModal />
       <main className="mx-auto w-full max-w-[1440px] px-3 pb-10 pt-4 sm:px-4 lg:px-6 lg:pt-6">
@@ -59,6 +62,10 @@ export function Lobby() {
             </AnimatePresence>
           </motion.section>
           <DailyClaim />
+        </div>
+
+        <div className="mt-3">
+          <BonusSpin />
         </div>
 
         <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-3">

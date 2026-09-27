@@ -37,6 +37,8 @@ export const users = pgTable("users", {
   suspendedAt: timestamp("suspended_at", { withTimezone: true }),
   /** Set by an admin; muted players can read chat but not post. */
   chatMutedAt: timestamp("chat_muted_at", { withTimezone: true }),
+  /** The user who referred this account (their id), set once at sign-up. */
+  referredBy: text("referred_by"),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });
@@ -125,6 +127,9 @@ export const wallets = pgTable(
     prevWeekProfit: bigint("prev_week_profit", { mode: "number" }).notNull().default(0),
     totalWagered: bigint("total_wagered", { mode: "number" }).notNull().default(0),
     biggestWin: bigint("biggest_win", { mode: "number" }).notNull().default(0),
+    /** Daily bonus spin: when it was last spun, and the current daily streak. */
+    lastSpinAt: timestamp("last_spin_at", { withTimezone: true }),
+    spinStreak: integer("spin_streak").notNull().default(0),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -166,8 +171,8 @@ export const transactions = pgTable(
     check(
       "transactions_amount_sign",
       sql`(${t.type} = 'bet' AND ${t.amount} < 0)
-        OR (${t.type}::text IN ('payout', 'refund', 'daily_claim', 'signup_bonus', 'lab_reward') AND ${t.amount} > 0)
-        OR (${t.type}::text IN ('guest_merge', 'admin_adjust') AND ${t.amount} <> 0)`,
+        OR (${t.type}::text IN ('payout', 'refund', 'daily_claim', 'signup_bonus', 'lab_reward', 'bonus_spin', 'referral', 'rain', 'lab_track') AND ${t.amount} > 0)
+        OR (${t.type}::text IN ('guest_merge', 'admin_adjust', 'tip') AND ${t.amount} <> 0)`,
     ),
     check(
       "transactions_game_required",
@@ -590,6 +595,8 @@ export const labChallenges = pgTable(
     title: text("title").notNull(),
     category: text("category").notNull(),
     difficulty: text("difficulty").notNull(),
+    /** Optional track/campaign this challenge belongs to (completing a whole track pays a bonus). */
+    track: text("track"),
     /** Plain text shown to players. */
     description: text("description").notNull(),
     /** "static": one flag for everyone (only its hash is stored). "per_player": derived per user. */
@@ -690,6 +697,22 @@ export const adminAudit = pgTable(
   (t) => [index("admin_audit_created_idx").on(t.createdAt.desc())],
 );
 
+export const announcements = pgTable(
+  "announcements",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    body: text("body").notNull(),
+    /** "info" | "warn" | "success" — drives the banner colour. */
+    level: text("level").notNull().default("info"),
+    /** Optional link the banner points to. */
+    href: text("href"),
+    active: boolean("active").notNull().default(true),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [index("announcements_active_idx").on(t.active, t.createdAt.desc())],
+);
+
 export const schema = {
   users,
   sessions,
@@ -717,5 +740,6 @@ export const schema = {
   labSolves,
   labHintUnlocks,
   pushSubscriptions,
+  announcements,
   adminAudit,
 };

@@ -3,9 +3,11 @@
 import { AnimatePresence, motion } from "framer-motion";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { CHAT_MAX_LENGTH, type ChatHistoryDTO, type ChatMessageDTO, type LiveRoom } from "@snakeland/shared";
+import { CHAT_MAX_LENGTH, TIP_MAX, TIP_MIN, type ChatHistoryDTO, type ChatMessageDTO, type LiveRoom } from "@snakeland/shared";
 import { api, ApiError } from "@/lib/api";
 import { cn } from "@/lib/cn";
+import { engagementApi } from "@/lib/engagement-api";
+import { chips } from "@/lib/format";
 import { expoOut, tap, tapTransition } from "@/lib/motion";
 import { onLiveChat } from "@/lib/live-socket";
 import { useSession } from "@/providers/session";
@@ -26,7 +28,9 @@ function hue(id: string) {
  * needs an account.
  */
 export function LiveChat({ room }: { room: LiveRoom }) {
-  const { me } = useSession();
+  const { me, setWallet } = useSession();
+  const [tipTo, setTipTo] = useState<{ userId: string; name: string } | null>(null);
+  const [tipAmount, setTipAmount] = useState("100");
   const [open, setOpen] = useState(false);
   const [data, setData] = useState<ChatHistoryDTO | null>(null);
   const [unread, setUnread] = useState(0);
@@ -91,6 +95,29 @@ export function LiveChat({ room }: { room: LiveRoom }) {
     }
   };
 
+  const sendTip = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const amount = Math.floor(Number(tipAmount));
+    if (!tipTo || sending) return;
+    if (!Number.isFinite(amount) || amount < TIP_MIN || amount > TIP_MAX) {
+      setError(`Tips are ${chips(TIP_MIN)} to ${chips(TIP_MAX)} chips`);
+      return;
+    }
+    setSending(true);
+    setError(null);
+    try {
+      const { balance } = await engagementApi.tip(room, tipTo.userId, amount);
+      setWallet({ balance });
+      setTipTo(null);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't send tip");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const canTip = Boolean(data?.canPost && me && !me.user.isGuest);
+
   return (
     <>
       <motion.button
@@ -139,16 +166,33 @@ export function LiveChat({ room }: { room: LiveRoom }) {
               ) : data.messages.length === 0 ? (
                 <p className="m-auto max-w-[220px] text-center text-[13px] text-fg-muted">Quiet in here. Say hi to the table.</p>
               ) : (
-                data.messages.map((m) => (
-                  <div key={m.id} className="text-[13px] leading-snug">
-                    <span className="font-semibold" style={{ color: hue(m.userId) }}>
-                      {m.name}
-                      {m.userId === me?.user.id && <span className="font-normal text-fg-muted"> (you)</span>}
-                    </span>
-                    <span className="ml-1.5 text-[10px] text-fg-disabled tabular">{timeFmt.format(new Date(m.at))}</span>
-                    <p className="break-words text-fg">{m.text}</p>
-                  </div>
-                ))
+                data.messages.map((m) =>
+                  m.kind === "system" ? (
+                    <p key={m.id} className="self-center rounded-full bg-[color-mix(in_srgb,var(--color-gold)_12%,transparent)] px-3 py-1 text-center text-[12px] text-gold">
+                      {m.text}
+                    </p>
+                  ) : (
+                    <div key={m.id} className="group text-[13px] leading-snug">
+                      <span className="font-semibold" style={{ color: hue(m.userId) }}>
+                        {m.name}
+                        {m.userId === me?.user.id && <span className="font-normal text-fg-muted"> (you)</span>}
+                      </span>
+                      <span className="ml-1.5 text-[10px] text-fg-disabled tabular">{timeFmt.format(new Date(m.at))}</span>
+                      {canTip && m.userId && m.userId !== me?.user.id && (
+                        <button
+                          onClick={() => {
+                            setTipTo({ userId: m.userId, name: m.name });
+                            setError(null);
+                          }}
+                          className="ml-2 text-[11px] text-fg-muted underline-offset-2 hover:text-gold hover:underline"
+                        >
+                          Tip
+                        </button>
+                      )}
+                      <p className="break-words text-fg">{m.text}</p>
+                    </div>
+                  ),
+                )
               )}
             </div>
             <div className="border-t border-hairline p-3">
@@ -165,6 +209,48 @@ export function LiveChat({ room }: { room: LiveRoom }) {
                     </>
                   )}
                 </p>
+              ) : tipTo ? (
+                <form onSubmit={sendTip} className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between text-[12px] text-fg-muted">
+                    <span>
+                      Tip <span className="font-semibold text-fg">{tipTo.name}</span>
+                    </span>
+                    <button type="button" onClick={() => setTipTo(null)} className="hover:text-fg">
+                      Cancel
+                    </button>
+                  </div>
+                  <div className="flex gap-2">
+                    {[100, 500, 1000].map((v) => (
+                      <button
+                        key={v}
+                        type="button"
+                        onClick={() => setTipAmount(String(v))}
+                        className={cn(
+                          "h-8 flex-1 rounded-[var(--radius-ui)] text-[12px] tabular hairline",
+                          tipAmount === String(v) ? "bg-fg text-bg" : "text-fg-muted hover:text-fg",
+                        )}
+                      >
+                        {chips(v)}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      value={tipAmount}
+                      onChange={(e) => setTipAmount(e.target.value.replace(/[^0-9]/g, ""))}
+                      inputMode="numeric"
+                      aria-label="Tip amount"
+                      className="h-10 min-w-0 flex-1 rounded-[var(--radius-ui)] bg-bg px-3 text-[14px] tabular outline-none hairline focus:border-fg/40"
+                    />
+                    <button
+                      type="submit"
+                      disabled={sending}
+                      className={cn("h-10 rounded-[var(--radius-ui)] bg-gold px-4 text-[13px] font-semibold text-black", sending && "opacity-40")}
+                    >
+                      Send tip
+                    </button>
+                  </div>
+                </form>
               ) : (
                 <form onSubmit={send} className="flex gap-2">
                   <input

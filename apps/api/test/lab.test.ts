@@ -314,6 +314,7 @@ describe("admin lab editor", () => {
       title: "Static",
       category: "web",
       difficulty: "easy",
+      track: null,
       description: "d",
       hints: [{ text: "a hint", penalty: 20 }],
       reward: 500,
@@ -331,5 +332,40 @@ describe("admin lab editor", () => {
     await lab.update(id, { ...admin, flag: undefined, published: true });
     expect((await lab.submit(u, slug, "snk{same_for_all}")).reward).toBe(500);
     await expect(lab.remove(id)).rejects.toMatchObject({ code: "HAS_SOLVES" });
+  });
+
+  it("pays a one-time bonus for completing a whole track", async () => {
+    const u = await player();
+    const track = `trk-${Date.now()}`;
+    const mk = async (n: number) => {
+      const slug = `${track}-c${n}`;
+      const id = await lab.create({
+        slug,
+        title: `T${n}`,
+        category: "web",
+        difficulty: "easy",
+        track,
+        description: "d",
+        hints: [],
+        reward: 1000,
+        flagMode: "static",
+        flag: `snk{trackflag${n}}`,
+        files: [],
+        published: true,
+        sortOrder: 1,
+      });
+      return { slug, id };
+    };
+    const a = await mk(1);
+    const b = await mk(2);
+    // Solving the first pays no track bonus yet.
+    const first = await lab.submit(u, a.slug, "snk{trackflag1}");
+    expect(first.trackBonus).toBeNull();
+    // Solving the last completes the track → bonus = 25% of 2000 = 500.
+    const last = await lab.submit(u, b.slug, "snk{trackflag2}");
+    expect(last.trackBonus).toEqual({ track, amount: 500 });
+    // Re-solving doesn't pay the bonus again (idempotent).
+    expect((await lab.submit(u, b.slug, "snk{trackflag2}")).trackBonus).toBeNull();
+    expect(await wallet.ledgerSum(u.id)).toBe((await wallet.getWallet(u.id)).balance);
   });
 });

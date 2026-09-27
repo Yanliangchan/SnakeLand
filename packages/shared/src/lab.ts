@@ -45,6 +45,8 @@ export interface LabChallengeDTO {
   title: string;
   category: LabCategory;
   difficulty: LabDifficulty;
+  /** Optional campaign/track this challenge belongs to. */
+  track: string | null;
   description: string;
   hints: LabHintView[];
   /** Full reward if solved with no more hints opened. */
@@ -70,7 +72,12 @@ export interface LabSubmitResultDTO {
   reward: Chips | null;
   balance: Chips | null;
   alreadySolved: boolean;
+  /** Set when this solve completes a whole track, paying a one-time bonus. */
+  trackBonus: { track: string; amount: Chips } | null;
 }
+
+/** Completing every published challenge in a track pays this share of the track's total reward. */
+export const LAB_TRACK_BONUS_PCT = 25;
 
 /** Opening a hint returns its text and the reward now at stake. */
 export interface LabHintResultDTO {
@@ -85,6 +92,7 @@ export interface AdminLabChallengeDTO {
   title: string;
   category: LabCategory;
   difficulty: LabDifficulty;
+  track: string | null;
   description: string;
   reward: Chips;
   flagMode: LabFlagMode;
@@ -101,6 +109,7 @@ export interface AdminLabChallengeInput {
   title: string;
   category: LabCategory;
   difficulty: LabDifficulty;
+  track: string | null;
   description: string;
   reward: Chips;
   flagMode: LabFlagMode;

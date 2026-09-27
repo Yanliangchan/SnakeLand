@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
-import { ADMIN_BALANCE_MODES, LAB_CATEGORIES, LAB_DIFFICULTIES, LAB_FLAG_MODES, LAB_MAX_REWARD, MAX_BALANCE } from "@snakeland/shared";
+import { ADMIN_BALANCE_MODES, ANNOUNCEMENT_LEVELS, LAB_CATEGORIES, LAB_DIFFICULTIES, LAB_FLAG_MODES, LAB_MAX_REWARD, LIVE_ROOMS, MAX_BALANCE } from "@snakeland/shared";
 import {
   ADMIN_MAX_FAILS_PER_IP,
   ADMIN_MAX_FAILS_TOTAL,
@@ -11,6 +11,7 @@ import {
 } from "../../admin/auth";
 import type { AdminService } from "../../admin/service";
 import type { LabService } from "../../lab/service";
+import type { EngagementService } from "../../engagement/service";
 import type { PurgeService } from "../../maintenance/purge";
 import type { WalletService } from "../../wallet/wallet-service";
 
@@ -42,6 +43,7 @@ export async function adminRoutes(
     wallet: WalletService;
     purge: PurgeService;
     lab: LabService;
+    engagement: EngagementService;
   },
 ) {
   const r = app.withTypeProvider<ZodTypeProvider>();
@@ -223,6 +225,12 @@ export async function adminRoutes(
     title: z.string().trim().min(1).max(80),
     category: z.enum(LAB_CATEGORIES),
     difficulty: z.enum(LAB_DIFFICULTIES),
+    track: z
+      .string()
+      .trim()
+      .max(40)
+      .nullable()
+      .transform((v) => v || null),
     description: z.string().trim().min(1).max(4000),
     hints: z
       .array(z.object({ text: z.string().trim().min(1).max(600), penalty: z.number().int().min(0).max(75) }))
@@ -252,6 +260,49 @@ export async function adminRoutes(
   r.post("/v1/admin/lab/:id/delete", { schema: { params: labParams } }, async (request) => {
     await opts.lab.remove(request.params.id);
     await admin.audit("lab_delete", null, { id: request.params.id }, request.clientIp);
+    return { ok: true };
+  });
+
+  // ------------------------------------------------------------------ rain & announcements
+  r.post(
+    "/v1/admin/rain",
+    { schema: { body: z.object({ room: z.enum(LIVE_ROOMS), amount: z.number().int().min(10).max(10_000_000) }) } },
+    async (request) => {
+      const res = await opts.engagement.rain(request.body.room, request.body.amount);
+      await admin.audit("rain", null, { room: request.body.room, ...res }, request.clientIp);
+      return res;
+    },
+  );
+
+  r.get("/v1/admin/announcements", async () => ({ announcements: await opts.engagement.adminList() }));
+  const annBody = z.object({
+    body: z.string().trim().min(1).max(280),
+    level: z.enum(ANNOUNCEMENT_LEVELS),
+    // Site-relative paths or https links only, so a banner can't carry a javascript: URL.
+    href: z
+      .string()
+      .trim()
+      .max(300)
+      .regex(/^(\/(?![/\\])[^\s\\]*|https:\/\/[^\s]+)?$/, "Use a /path or an https:// link")
+      .nullable()
+      .transform((v) => v || null),
+    active: z.boolean(),
+  });
+  r.post("/v1/admin/announcements", { schema: { body: annBody } }, async (request) => {
+    const id = await opts.engagement.createAnnouncement(request.body);
+    await admin.audit("announce", null, { level: request.body.level }, request.clientIp);
+    return { id };
+  });
+  r.post(
+    "/v1/admin/announcements/:id/active",
+    { schema: { params: z.object({ id: z.uuid() }), body: z.object({ active: z.boolean() }) } },
+    async (request) => {
+      await opts.engagement.setAnnouncementActive(request.params.id, request.body.active);
+      return { ok: true };
+    },
+  );
+  r.post("/v1/admin/announcements/:id/delete", { schema: { params: z.object({ id: z.uuid() }) } }, async (request) => {
+    await opts.engagement.removeAnnouncement(request.params.id);
     return { ok: true };
   });
 }
