@@ -62,6 +62,7 @@ export class PurgeService {
       sql`DELETE FROM plinko_drops WHERE user_id = ${userId}`,
       sql`DELETE FROM carrier_flights WHERE user_id = ${userId}`,
       sql`DELETE FROM ladder_rounds WHERE user_id = ${userId}`,
+      sql`DELETE FROM lab_hint_unlocks WHERE user_id = ${userId}`,
       sql`DELETE FROM lab_solves WHERE user_id = ${userId}`,
       sql`DELETE FROM fair_seeds WHERE user_id = ${userId}`,
       sql`DELETE FROM transactions WHERE user_id = ${userId}`,

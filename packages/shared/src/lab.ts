@@ -2,7 +2,7 @@ import type { Chips } from "./money";
 
 // ---------------------------------------------------------------- The Lab (capture the flag)
 
-export const LAB_CATEGORIES = ["crypto", "web", "forensics", "casino"] as const;
+export const LAB_CATEGORIES = ["crypto", "web", "forensics", "casino", "misc"] as const;
 export type LabCategory = (typeof LAB_CATEGORIES)[number];
 
 export const LAB_DIFFICULTIES = ["easy", "medium", "hard", "insane"] as const;
@@ -15,8 +15,30 @@ export const LAB_MAX_REWARD: Chips = 100_000;
 export const LAB_FLAG_MODES = ["static", "per_player"] as const;
 export type LabFlagMode = (typeof LAB_FLAG_MODES)[number];
 
+/** A tiered hint. Opening one reduces this challenge's reward by `penalty` percent. */
+export interface LabHint {
+  text: string;
+  /** Percent of the reward given up for opening this hint (0–100). */
+  penalty: number;
+}
+/** A challenge never gives up more than this share of its reward to hints. */
+export const LAB_MAX_HINT_PENALTY = 75;
+
+/** Reward left after `penalty` percent is taken off, never below 1 chip. */
+export function labRewardAfterHints(reward: Chips, penalty: number): Chips {
+  const capped = Math.min(LAB_MAX_HINT_PENALTY, Math.max(0, penalty));
+  return Math.max(1, Math.floor((reward * (100 - capped)) / 100));
+}
+
 /** Every flag looks like snk{...}. */
 export const LAB_FLAG_RE = /^snk\{[A-Za-z0-9_\-!?.@#$%^&*+=:]{1,120}\}$/;
+
+/** One hint as a player sees it: locked (text hidden, penalty shown) or open. */
+export interface LabHintView {
+  penalty: number;
+  /** Null until the player opens it (or the challenge is solved). */
+  text: string | null;
+}
 
 export interface LabChallengeDTO {
   slug: string;
@@ -24,8 +46,11 @@ export interface LabChallengeDTO {
   category: LabCategory;
   difficulty: LabDifficulty;
   description: string;
-  hint: string | null;
+  hints: LabHintView[];
+  /** Full reward if solved with no more hints opened. */
   reward: Chips;
+  /** Reward at stake right now, after the hints already opened. */
+  effectiveReward: Chips;
   files: { name: string }[];
   solves: number;
   solved: boolean;
@@ -41,10 +66,16 @@ export interface LabListDTO {
 
 export interface LabSubmitResultDTO {
   correct: boolean;
-  /** Set on a first correct solve. */
+  /** Set on a first correct solve (after any hint penalty). */
   reward: Chips | null;
   balance: Chips | null;
   alreadySolved: boolean;
+}
+
+/** Opening a hint returns its text and the reward now at stake. */
+export interface LabHintResultDTO {
+  text: string;
+  effectiveReward: Chips;
 }
 
 /** Admin view: everything, including drafts. The static flag itself is never sent back. */
@@ -55,11 +86,11 @@ export interface AdminLabChallengeDTO {
   category: LabCategory;
   difficulty: LabDifficulty;
   description: string;
-  hint: string | null;
   reward: Chips;
   flagMode: LabFlagMode;
   hasStaticFlag: boolean;
   files: { name: string; content: string }[];
+  hints: LabHint[];
   published: boolean;
   sortOrder: number;
   solves: number;
@@ -71,12 +102,12 @@ export interface AdminLabChallengeInput {
   category: LabCategory;
   difficulty: LabDifficulty;
   description: string;
-  hint: string | null;
   reward: Chips;
   flagMode: LabFlagMode;
   /** Static mode: the flag in plain text. Leave empty on edit to keep the current one. */
   flag?: string;
   files: { name: string; content: string }[];
+  hints: LabHint[];
   published: boolean;
   sortOrder: number;
 }
@@ -93,7 +124,16 @@ export const LAB_PLACEHOLDERS = [
   "{{FLAG_REVERSED}}",
   "{{FLAG_CAESAR}}",
   "{{FLAG_XOR}}",
+  "{{FLAG_ATBASH}}",
+  "{{FLAG_VIGENERE}}",
+  "{{FLAG_MORSE}}",
+  "{{FLAG_BINARY}}",
+  "{{FLAG_URLENC}}",
+  "{{REPEAT_XOR}}",
+  "{{RSA}}",
+  "{{GIT_LOG}}",
   "{{LCG}}",
   "{{TIMESEED}}",
   "{{ACCESS_LOG}}",
+  "{{ONION}}",
 ] as const;

@@ -92,6 +92,13 @@
       "when": 1790485967313,
       "tag": "0012_lab_chat_push_games",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1790490436182,
+      "tag": "0013_lab_tiered_hints",
+      "breakpoints": true
     }
   ]
 }

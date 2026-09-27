@@ -224,7 +224,9 @@ export async function adminRoutes(
     category: z.enum(LAB_CATEGORIES),
     difficulty: z.enum(LAB_DIFFICULTIES),
     description: z.string().trim().min(1).max(4000),
-    hint: z.string().trim().max(500).nullable(),
+    hints: z
+      .array(z.object({ text: z.string().trim().min(1).max(600), penalty: z.number().int().min(0).max(75) }))
+      .max(5),
     reward: z.number().int().min(1).max(LAB_MAX_REWARD),
     flagMode: z.enum(LAB_FLAG_MODES),
     flag: z.string().trim().max(200).optional(),

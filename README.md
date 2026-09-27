@@ -2,7 +2,8 @@
 
 A casino-style web app with **virtual chips only**. There's no real money anywhere, and every outcome is provably fair.
 It has eleven games in one lobby: Blackjack, Mines, Plinko, Baccarat, Roulette, Crash, Carrier, Tower, Crossing,
-Penalty and Hi-Lo, plus **The Lab**, a set of capture-the-flag puzzles that pay chips.
+Penalty and Hi-Lo, plus **The Lab**, ~20 capture-the-flag puzzles (with tiered hints and a live SQL-injection
+sandbox) that pay chips.
 
 > Status: live at snakeland.yanliangchan.com. All eleven games, The Lab, live chat, push notifications,
 > leaderboards and the admin console are running.
@@ -183,16 +184,27 @@ Instant single-player games with a 97% return, on the same per-round seed commit
 
 ## The Lab
 
-`/lab` is a set of capture-the-flag puzzles (crypto, web, forensics, casino). Guests can browse; registered players
-download files and submit flags. Each challenge pays its chip reward once per player (Easy 1,000, Medium 3,000,
-Hard 7,500, Insane 15,000) as a `lab_reward` ledger row. Lab chips don't count towards leaderboard profit.
+`/lab` is a set of ~20 capture-the-flag puzzles across crypto, web, forensics, casino and misc, ranging from
+easy to insane. Guests can browse; registered players download files and submit flags. Each challenge pays its
+chip reward once per player (Easy 1,000, Medium 3,000, Hard 7,500, Insane 15,000) as a `lab_reward` ledger row.
+Lab chips don't count towards leaderboard profit. Most challenges are built to be solved with free online tools
+(CyberChef, dcode.fr, jwt.io, factordb / alpertron).
 
-- Starter challenges use **per-player flags** derived from `HMAC(secret, user, challenge)`, so answers can't be
-  shared; nothing about them is stored. Admin-made challenges can also use one static flag, stored only as a hash.
-- A test solves every starter challenge from what a player can see, so each one is known to be solvable.
-- Flag submissions are limited to 10 a minute; the "vulnerable" web challenges only ever reveal the caller's own
-  flag.
-- `/admin/lab` creates, edits, publishes and removes challenges (solved ones can only be unpublished).
+- Challenges use **per-player flags** derived from `HMAC(secret, user, challenge)`, so answers can't be shared;
+  nothing about them is stored. Admin-made challenges can also use one static flag, stored only as a hash.
+- **Tiered hints**: each challenge has up to three hints — a nudge, the method and which online tool, then a
+  near-walkthrough. Opening one permanently cuts that challenge's reward for that player (default 10/20/30%,
+  capped at 75%); the reduced amount is fixed at solve time. Solvers see every hint afterwards.
+- **SQL-injection challenges** run against a throwaway in-memory SQLite database, seeded fresh per request and
+  completely isolated from the app's Postgres — real injection behaviour, no risk to real data. There's an easy
+  browser-only login bypass and a UNION-based read. Other technical challenges cover Vigenère, repeating-key XOR,
+  RSA with Fermat-close primes, an AES-ECB byte-at-a-time oracle, JWT forging with a weak secret, an LCG break
+  and a seeded-PRNG brute force.
+- A test **solves every challenge** from only what a player can see (including the SQLi sandbox, JWT, ECB oracle
+  and RSA), so each one is proven solvable, pays once, and rejects other players' flags.
+- Flag submissions are limited to 10 a minute; the "vulnerable" endpoints only ever reveal the caller's own flag.
+- `/admin/lab` creates, edits, publishes and removes challenges and their hints (solved ones can only be
+  unpublished).
 
 ## Live chat
 

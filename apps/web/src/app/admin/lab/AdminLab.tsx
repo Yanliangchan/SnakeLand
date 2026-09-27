@@ -25,7 +25,7 @@ const blank = (): AdminLabChallengeInput => ({
   category: "crypto",
   difficulty: "easy",
   description: "",
-  hint: null,
+  hints: [],
   reward: LAB_REWARDS.easy,
   flagMode: "static",
   flag: "",
@@ -69,7 +69,7 @@ function Editor({
     e.preventDefault();
     setPending(true);
     setError(null);
-    const body = { ...v, hint: v.hint?.trim() ? v.hint : null, flag: v.flag?.trim() || undefined };
+    const body = { ...v, hints: v.hints.filter((h) => h.text.trim()), flag: v.flag?.trim() || undefined };
     try {
       if (id) await adminApi.labUpdate(id, body);
       else await adminApi.labCreate(body);
@@ -152,9 +152,49 @@ function Editor({
         <Label text="Description">
           <textarea className={area} rows={5} value={v.description} onChange={(e) => set("description", e.target.value)} maxLength={4000} required />
         </Label>
-        <Label text="Hint (optional)">
-          <input className={input} value={v.hint ?? ""} onChange={(e) => set("hint", e.target.value)} maxLength={500} />
-        </Label>
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[12px] text-fg-muted">Hints ({v.hints.length}/5) — opening one cuts that player&rsquo;s reward</span>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={v.hints.length >= 5}
+              onClick={() => set("hints", [...v.hints, { text: "", penalty: v.hints.length === 0 ? 10 : v.hints.length === 1 ? 20 : 30 }])}
+            >
+              Add hint
+            </Button>
+          </div>
+          {v.hints.map((h, i) => (
+            <div key={i} className="flex gap-2">
+              <span className="grid size-9 shrink-0 place-items-center rounded-[var(--radius-ui)] text-[12px] text-fg-muted hairline">{i + 1}</span>
+              <input
+                className={input}
+                value={h.text}
+                placeholder={`Hint ${i + 1}`}
+                onChange={(e) => set("hints", v.hints.map((x, j) => (j === i ? { ...x, text: e.target.value } : x)))}
+                maxLength={600}
+              />
+              <div className="flex shrink-0 items-center gap-1">
+                <input
+                  className={cn(input, "w-16 tabular")}
+                  type="number"
+                  min={0}
+                  max={75}
+                  value={h.penalty}
+                  onChange={(e) =>
+                    set("hints", v.hints.map((x, j) => (j === i ? { ...x, penalty: Math.max(0, Math.min(75, Math.floor(Number(e.target.value) || 0))) } : x)))
+                  }
+                  aria-label={`Hint ${i + 1} reward penalty percent`}
+                />
+                <span className="text-[12px] text-fg-muted">%</span>
+              </div>
+              <Button type="button" variant="ghost" size="sm" onClick={() => set("hints", v.hints.filter((_, j) => j !== i))}>
+                ✕
+              </Button>
+            </div>
+          ))}
+        </div>
 
         <div className="flex flex-col gap-2 rounded-[var(--radius-ui)] p-3 hairline">
           <div className="flex flex-wrap gap-2 text-[13px]">

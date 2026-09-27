@@ -9,6 +9,7 @@ import {
   type LabChallengeDTO,
   type LabDifficulty,
   type LabListDTO,
+  type LabHintResultDTO,
   type LabSubmitResultDTO,
 } from "@snakeland/shared";
 import { AppHeader } from "@/components/AppHeader";
@@ -21,8 +22,8 @@ import { expoOut, fadeUp } from "@/lib/motion";
 import { useSession } from "@/providers/session";
 import { useSettings } from "@/providers/settings";
 
-const CATEGORY_LABEL: Record<LabCategory, string> = { crypto: "Crypto", web: "Web", forensics: "Forensics", casino: "Casino" };
-const CATEGORY_COLOUR: Record<LabCategory, string> = { crypto: "#a78bfa", web: "#38bdf8", forensics: "#f5a524", casino: "#3ddc84" };
+const CATEGORY_LABEL: Record<LabCategory, string> = { crypto: "Crypto", web: "Web", forensics: "Forensics", casino: "Casino", misc: "Misc" };
+const CATEGORY_COLOUR: Record<LabCategory, string> = { crypto: "#a78bfa", web: "#38bdf8", forensics: "#f5a524", casino: "#3ddc84", misc: "#f472b6" };
 const DIFFICULTY_CLASS: Record<LabDifficulty, string> = {
   easy: "text-win",
   medium: "text-[#facc15]",
@@ -65,6 +66,14 @@ function CategoryIcon({ category }: { category: LabCategory }) {
           <circle cx="9" cy="15" r="1.2" fill="currentColor" />
         </svg>
       );
+    case "misc":
+      return (
+        <svg {...common}>
+          <circle cx="6" cy="12" r="1.6" fill="currentColor" />
+          <circle cx="12" cy="12" r="1.6" fill="currentColor" />
+          <circle cx="18" cy="12" r="1.6" fill="currentColor" />
+        </svg>
+      );
   }
 }
 
@@ -73,18 +82,33 @@ function ChallengeSheet({
   canPlay,
   onClose,
   onSolved,
+  onHint,
 }: {
   challenge: LabChallengeDTO | null;
   canPlay: boolean;
   onClose: () => void;
   onSolved: (slug: string, r: LabSubmitResultDTO) => void;
+  onHint: (slug: string, index: number, r: LabHintResultDTO) => void;
 }) {
   const [flag, setFlag] = useState("");
   const [status, setStatus] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [pending, setPending] = useState(false);
-  const [showHint, setShowHint] = useState(false);
+  const [openingHint, setOpeningHint] = useState<number | null>(null);
   const { play } = useSettings();
   const c = challenge;
+
+  const unlockHint = async (index: number) => {
+    if (!c || openingHint !== null) return;
+    setOpeningHint(index);
+    try {
+      const r = await api<LabHintResultDTO>(`/v1/lab/challenges/${encodeURIComponent(c.slug)}/hints/${index}`, { method: "POST", body: {} });
+      onHint(c.slug, index, r);
+    } catch {
+      // Leave the hint locked; the reward is unchanged.
+    } finally {
+      setOpeningHint(null);
+    }
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -120,7 +144,6 @@ function ChallengeSheet({
   const close = () => {
     setFlag("");
     setStatus(null);
-    setShowHint(false);
     onClose();
   };
 
@@ -134,7 +157,10 @@ function ChallengeSheet({
               {CATEGORY_LABEL[c.category]}
             </span>
             <span className={cn("rounded-full px-2.5 py-1 font-medium capitalize hairline", DIFFICULTY_CLASS[c.difficulty])}>{c.difficulty}</span>
-            <span className="rounded-full px-2.5 py-1 font-semibold tabular hairline">{c.reward.toLocaleString()} chips</span>
+            <span className="rounded-full px-2.5 py-1 font-semibold tabular hairline">
+              {c.effectiveReward.toLocaleString()}
+              {c.effectiveReward < c.reward && <span className="font-normal text-fg-muted"> of {c.reward.toLocaleString()}</span>} chips
+            </span>
             <span className="text-fg-muted">
               {c.solves} {c.solves === 1 ? "solve" : "solves"}
             </span>
@@ -168,18 +194,32 @@ function ChallengeSheet({
             </div>
           )}
 
-          {c.hint && (
-            <div>
-              {showHint ? (
-                <motion.p {...fadeUp} className="rounded-[var(--radius-ui)] bg-elevated px-3 py-2 text-[13px] text-fg-muted">
-                  <span className="font-medium text-fg">Hint · </span>
-                  {c.hint}
-                </motion.p>
-              ) : (
-                <button onClick={() => setShowHint(true)} className="text-[13px] text-fg-muted underline underline-offset-4 hover:text-fg">
-                  Show a hint
-                </button>
-              )}
+          {c.hints.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <p className="text-[12px] font-medium uppercase tracking-wider text-fg-muted">Hints</p>
+              {c.hints.map((h, i) => {
+                const prevOpen = i === 0 || c.hints[i - 1]!.text !== null;
+                const open = h.text !== null;
+                return open ? (
+                  <motion.p key={i} {...fadeUp} className="rounded-[var(--radius-ui)] bg-elevated px-3 py-2 text-[13px] text-fg-muted">
+                    <span className="font-medium text-fg">Hint {i + 1} · </span>
+                    {h.text}
+                  </motion.p>
+                ) : (
+                  <button
+                    key={i}
+                    disabled={!canPlay || !prevOpen || c.solved || openingHint !== null}
+                    onClick={() => void unlockHint(i)}
+                    className="flex items-center justify-between gap-2 rounded-[var(--radius-ui)] px-3 py-2 text-left text-[13px] transition-colors hairline enabled:hover:bg-elevated disabled:opacity-50"
+                  >
+                    <span>
+                      Hint {i + 1}
+                      {!prevOpen && !c.solved && <span className="text-fg-muted"> · open the previous one first</span>}
+                    </span>
+                    <span className="shrink-0 text-fg-muted">−{h.penalty}% reward</span>
+                  </button>
+                );
+              })}
             </div>
           )}
 
@@ -256,7 +296,22 @@ export function LabView() {
       d && {
         ...d,
         earned: d.earned + (r.reward ?? 0),
-        challenges: d.challenges.map((c) => (c.slug === slug ? { ...c, solved: true, solves: c.solves + (r.reward ? 1 : 0) } : c)),
+        challenges: d.challenges.map((c) =>
+          c.slug === slug ? { ...c, solved: true, solves: c.solves + (r.reward ? 1 : 0), hints: c.hints.map((h) => h) } : c,
+        ),
+      },
+    );
+  };
+
+  const onHint = (slug: string, index: number, r: LabHintResultDTO) => {
+    setData((d) =>
+      d && {
+        ...d,
+        challenges: d.challenges.map((c) =>
+          c.slug === slug
+            ? { ...c, effectiveReward: r.effectiveReward, hints: c.hints.map((h, i) => (i === index ? { ...h, text: r.text } : h)) }
+            : c,
+        ),
       },
     );
   };
@@ -355,7 +410,7 @@ export function LabView() {
                   <p className="text-[17px] font-semibold leading-tight">{c.title}</p>
                   <p className="line-clamp-2 text-[13px] text-fg-muted">{c.description}</p>
                   <div className="mt-auto flex items-center justify-between pt-1 text-[12px]">
-                    <span className="font-semibold tabular">{c.reward.toLocaleString()} chips</span>
+                    <span className="font-semibold tabular">{c.effectiveReward.toLocaleString()} chips</span>
                     <span className="text-fg-muted tabular">
                       {c.solves} {c.solves === 1 ? "solve" : "solves"}
                     </span>
@@ -366,7 +421,7 @@ export function LabView() {
           )}
         </div>
       </main>
-      <ChallengeSheet challenge={open} canPlay={data?.canPlay ?? false} onClose={() => setOpenSlug(null)} onSolved={onSolved} />
+      <ChallengeSheet challenge={open} canPlay={data?.canPlay ?? false} onClose={() => setOpenSlug(null)} onSolved={onSolved} onHint={onHint} />
     </div>
   );
 }

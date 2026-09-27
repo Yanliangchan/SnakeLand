@@ -598,7 +598,10 @@ export const labChallenges = pgTable(
     reward: bigint("reward", { mode: "number" }).notNull(),
     /** Downloadable attachments. Per-player challenges fill {{FLAG...}} placeholders. */
     files: jsonb("files").$type<{ name: string; content: string }[]>().notNull().default([]),
+    /** @deprecated superseded by `hints`; kept so the migration stays non-destructive. */
     hint: text("hint"),
+    /** Tiered hints. Opening one cuts this player's reward by its penalty (percent). */
+    hints: jsonb("hints").$type<{ text: string; penalty: number }[]>().notNull().default([]),
     published: boolean("published").notNull().default(false),
     sortOrder: integer("sort_order").notNull().default(0),
     createdAt: createdAt(),
@@ -625,6 +628,23 @@ export const labSolves = pgTable(
   },
   (t) => [uniqueIndex("lab_solves_user_challenge_uq").on(t.userId, t.challengeId)],
 );
+
+/** One row per hint a player has opened. Opened hints reduce that challenge's reward. */
+export const labHintUnlocks = pgTable(
+  "lab_hint_unlocks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    challengeId: uuid("challenge_id")
+      .notNull()
+      .references(() => labChallenges.id, { onDelete: "restrict" }),
+    hintIndex: integer("hint_index").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("lab_hint_unlocks_uq").on(t.userId, t.challengeId, t.hintIndex)],
+)
 
 // ---------------------------------------------------------------------------
 // Push notifications (one row per opted-in device)
@@ -695,6 +715,7 @@ export const schema = {
   ladderRounds,
   labChallenges,
   labSolves,
+  labHintUnlocks,
   pushSubscriptions,
   adminAudit,
 };
