@@ -28,9 +28,15 @@ import { RecentMultipliers, type RecentItem } from "../shared/RecentMultipliers"
 import { useClientSeed } from "../shared/useClientSeed";
 
 const MODE_LABEL: Record<CarrierMode, string> = { calm: "Calm", normal: "Normal", fast: "Fast", turbo: "Turbo" };
-const PLANE_X = 190;
-const PLANE_Y = 190;
+const PLANE_X = 210;
 const DECK_Y = 356;
+const SEA_Y = 380;
+
+/** Altitude for a multiplier: 1× flies low, and it climbs (up to a cap) as the multiplier grows. */
+function altitudeFor(x100: number): number {
+  const climb = Math.min(210, Math.max(0, Math.log2(Math.max(1, x100 / 100)) * 66));
+  return 300 - climb;
+}
 
 type Phase = "idle" | "flying" | "landing" | "done";
 
@@ -46,21 +52,36 @@ function eventLabel(e: CarrierEventDTO) {
   return "";
 }
 
-/** A side-on jet facing right, in local coordinates around (0,0). */
-function Jet() {
+/** A sleek side-on fighter jet facing right, in local coordinates around (0,0). */
+function Jet({ burn }: { burn: boolean }) {
   return (
     <g>
-      <path d="M-46 -4 L28 -9 Q48 -8 54 0 Q48 8 28 9 L-46 6 Z" fill="#e5e7eb" />
-      <path d="M36 -7 Q46 -6 50 -2 L38 -2 Z" fill="#60a5fa" />
-      <path d="M-4 2 L-22 26 L-10 26 L14 4 Z" fill="#cbd5e1" />
-      <path d="M-4 -3 L-18 -18 L-8 -18 L10 -5 Z" fill="#cbd5e1" />
-      <path d="M-44 -4 L-54 -26 L-44 -26 L-30 -6 Z" fill="#fb923c" />
-      <path d="M-46 -2 L-58 -2" stroke="#fb923c" strokeWidth="3" strokeLinecap="round" opacity="0.8" />
+      {/* Afterburner flame, brighter at speed. */}
+      <motion.g
+        animate={burn ? { scaleX: [1, 1.5, 0.9, 1.3, 1], opacity: [0.85, 1, 0.7, 1, 0.85] } : { scaleX: 1, opacity: 0.5 }}
+        transition={{ duration: 0.28, repeat: burn ? Infinity : 0, ease: "easeInOut" }}
+        style={{ originX: "-52px", originY: "0px" }}
+      >
+        <path d="M-52 -4 L-84 0 L-52 4 Z" fill="#fb923c" />
+        <path d="M-52 -2.5 L-72 0 L-52 2.5 Z" fill="#fde68a" />
+      </motion.g>
+      {/* Fuselage */}
+      <path d="M-52 0 Q-40 -8 8 -9 L44 -7 Q60 -6 64 0 Q60 6 44 7 L8 9 Q-40 8 -52 0 Z" fill="#e8edf2" />
+      <path d="M44 -7 Q60 -6 64 0 Q60 6 44 7 Z" fill="#c2ccd6" />
+      {/* Canopy */}
+      <path d="M18 -8 Q32 -12 44 -7 L44 -3 Q30 -7 20 -4 Z" fill="#6cb2ea" />
+      <path d="M20 -6 Q30 -9 40 -6 L40 -4 Q30 -6 22 -4 Z" fill="#bfe0f7" opacity="0.7" />
+      {/* Swept wing + tail fin */}
+      <path d="M-6 3 L-32 25 L-14 25 L16 5 Z" fill="#cbd5e1" />
+      <path d="M-46 -3 L-58 -28 L-46 -25 L-28 -5 Z" fill="#cbd5e1" />
+      {/* Intake + accent stripe */}
+      <path d="M-8 4 L2 4 L2 8 L-10 8 Z" fill="#7b8794" />
+      <path d="M-30 -1 L30 -2 L30 1 L-30 2 Z" fill="#fb923c" opacity="0.85" />
     </g>
   );
 }
 
-function Pickup({ e, durationMs }: { e: CarrierEventDTO; durationMs: number }) {
+function Pickup({ e, durationMs, y }: { e: CarrierEventDTO; durationMs: number; y: number }) {
   const rocket = e.kind === "rocket";
   const cloud = e.kind === "cloud";
   return (
@@ -70,12 +91,13 @@ function Pickup({ e, durationMs }: { e: CarrierEventDTO; durationMs: number }) {
       transition={{ duration: durationMs / 1000, ease: "linear" }}
     >
       {cloud ? (
-        <g opacity="0.35" transform={`translate(0 ${PLANE_Y - 70})`}>
+        <g opacity="0.4" transform={`translate(0 ${y - 64})`}>
           <ellipse rx="46" ry="16" fill="#cbd5e1" />
           <ellipse cx="-22" cy="4" rx="28" ry="12" fill="#cbd5e1" />
+          <ellipse cx="20" cy="2" rx="24" ry="11" fill="#dfe6ee" />
         </g>
       ) : (
-        <g transform={`translate(0 ${PLANE_Y})`}>
+        <g transform={`translate(0 ${y})`}>
           <circle r="30" fill={rocket ? "rgba(212,64,58,0.18)" : "rgba(251,146,60,0.16)"} stroke={rocket ? "#d4403a" : "#fb923c"} strokeWidth="2" />
           {rocket ? (
             <g>
@@ -96,13 +118,27 @@ function Pickup({ e, durationMs }: { e: CarrierEventDTO; durationMs: number }) {
 
 function Carrier({ show }: { show: boolean }) {
   return (
-    <motion.g initial={false} animate={{ x: show ? 0 : 460 }} transition={{ duration: 1.1, ease: [0.2, 0.8, 0.2, 1] }}>
-      <path d="M440 360 L800 360 L780 404 L470 404 Z" fill="#374151" />
-      <rect x="428" y={DECK_Y - 6} width="386" height="10" rx="2" fill="#4b5563" />
-      <path d={`M460 ${DECK_Y - 2} L780 ${DECK_Y - 2}`} stroke="#facc15" strokeWidth="2" strokeDasharray="14 10" />
-      <rect x="700" y="312" width="34" height="40" rx="3" fill="#6b7280" />
-      <rect x="708" y="298" width="4" height="16" fill="#9ca3af" />
-      <rect x="706" y="322" width="22" height="6" rx="1" fill="#93c5fd" opacity="0.6" />
+    <motion.g initial={false} animate={{ x: show ? 0 : 480, opacity: show ? 1 : 0 }} transition={{ duration: 1, ease: [0.2, 0.8, 0.2, 1] }}>
+      {/* Hull */}
+      <path d="M436 358 L806 358 L784 410 L474 410 Z" fill="#2f3945" />
+      <path d="M436 358 L806 358 L802 366 L440 366 Z" fill="#3b4655" />
+      {/* Flight deck */}
+      <rect x="428" y={DECK_Y - 7} width="392" height="12" rx="2" fill="#525d6b" />
+      {/* Centreline + touchdown markings */}
+      <path d={`M452 ${DECK_Y - 1} L792 ${DECK_Y - 1}`} stroke="#e5e7eb" strokeWidth="2" strokeDasharray="20 14" opacity="0.75" />
+      <path d={`M560 ${DECK_Y - 4} L560 ${DECK_Y + 2} M588 ${DECK_Y - 4} L588 ${DECK_Y + 2} M616 ${DECK_Y - 4} L616 ${DECK_Y + 2}`} stroke="#facc15" strokeWidth="3" />
+      {/* Arrestor wires */}
+      {[636, 664, 692].map((x) => (
+        <path key={x} d={`M${x} ${DECK_Y - 5} L${x} ${DECK_Y - 1}`} stroke="#cbd5e1" strokeWidth="1.5" opacity="0.8" />
+      ))}
+      {/* Island tower with lights */}
+      <rect x="726" y="308" width="40" height="48" rx="3" fill="#616c7a" />
+      <rect x="734" y="292" width="4" height="18" fill="#8b95a3" />
+      <circle cx="736" cy="292" r="3" fill="#f0524b">
+        <animate attributeName="opacity" values="1;0.25;1" dur="1.4s" repeatCount="indefinite" />
+      </circle>
+      <rect x="732" y="320" width="26" height="7" rx="1" fill="#93c5fd" opacity="0.6" />
+      <rect x="732" y="332" width="26" height="7" rx="1" fill="#93c5fd" opacity="0.4" />
     </motion.g>
   );
 }
@@ -211,19 +247,30 @@ export function CarrierGame() {
 
   const inAir = phase === "flying" || phase === "landing";
   const currentX100 = flight ? (shown > 0 ? flight.events[shown - 1]!.x100 : 100) : 100;
+  const prevX100 = flight && shown > 1 ? flight.events[shown - 2]!.x100 : 100;
+  const altitude = altitudeFor(currentX100);
   const landed = flight?.landed ?? false;
   const outcomeOk = last
     ? JSON.stringify(carrierFlight(last.flight.reveal.serverSeed, last.clientSeed, last.flight.mode).events) ===
       JSON.stringify(last.flight.events)
     : null;
 
-  // Where the plane goes at the end: onto the deck, or past it into the sea.
-  const planeAnim =
+  // Bank angle: nose up while climbing, nose down on a dip.
+  const bank =
     phase === "landing" || phase === "done"
       ? landed
-        ? { x: [PLANE_X, 440, 560, 640], y: [PLANE_Y, 300, DECK_Y - 16, DECK_Y - 16], rotate: [0, 12, 0, 0] }
-        : { x: [PLANE_X, 480, 730, 790], y: [PLANE_Y, 290, 420, 470], rotate: [0, 18, 40, 55] }
-      : { x: PLANE_X, y: PLANE_Y, rotate: 0 };
+        ? 0
+        : 60
+      : Math.max(-16, Math.min(10, (altitudeFor(prevX100) - altitude) / 4));
+
+  // The plane holds station while collecting, then rises/dips with the multiplier,
+  // and finally banks down onto the deck or overshoots into the sea.
+  const planePos =
+    phase === "landing" || phase === "done"
+      ? landed
+        ? { x: [PLANE_X, 470, 600, 662], y: [altitude, 300, DECK_Y - 18, DECK_Y - 18] }
+        : { x: [PLANE_X, 500, 748, 806], y: [altitude, 322, 432, 482] }
+      : { x: PLANE_X, y: altitude };
 
   return (
     <>
@@ -302,31 +349,60 @@ export function CarrierGame() {
 
               {flight && phase === "flying" &&
                 flight.events.map((e, i) =>
-                  i === shown ? <Pickup key={`${flight.id}-${i}`} e={e} durationMs={stepMs} /> : null,
+                  i === shown ? <Pickup key={`${flight.id}-${i}`} e={e} durationMs={stepMs} y={altitude} /> : null,
                 )}
 
               <motion.g
                 key={flight?.id ?? "idle"}
                 initial={false}
-                animate={planeAnim}
+                animate={planePos}
                 transition={
                   phase === "landing" || phase === "done"
                     ? { duration: 2 * speed * 0.85, ease: "easeInOut", times: [0, 0.45, 0.8, 1] }
-                    : { duration: 0.3 }
+                    : { duration: 0.5, ease: "easeInOut" }
                 }
               >
-                <motion.g
-                  animate={inAir && phase === "flying" && !reducedMotion ? { y: [0, -6, 0, 5, 0] } : { y: 0 }}
-                  transition={{ duration: 2.2, repeat: inAir ? Infinity : 0, ease: "easeInOut" }}
-                >
-                  <Jet />
+                {/* Banking jet with a gentle idle bob. */}
+                <motion.g animate={{ rotate: bank }} transition={{ duration: phase === "flying" ? 0.5 : 0.9, ease: "easeOut" }}>
+                  <motion.g
+                    animate={inAir && phase === "flying" && !reducedMotion ? { y: [0, -5, 0, 4, 0] } : { y: 0 }}
+                    transition={{ duration: 2.4, repeat: inAir && phase === "flying" ? Infinity : 0, ease: "easeInOut" }}
+                  >
+                    <Jet burn={inAir && !reducedMotion} />
+                  </motion.g>
                 </motion.g>
+                {/* Multiplier tag riding just above the plane (stays upright). */}
+                {inAir && (
+                  <g transform="translate(6 -30)">
+                    <rect x="-30" y="-15" width="60" height="24" rx="12" fill="rgba(11,18,32,0.82)" stroke="#fb923c" strokeWidth="1.5" />
+                    <text x="0" y="2" textAnchor="middle" fontSize="16" fontWeight="700" fill="#fde68a">
+                      {formatX100(currentX100)}
+                    </text>
+                  </g>
+                )}
               </motion.g>
 
+              {/* Splash plume where the plane hits the sea. */}
               {phase === "done" && !landed && (
-                <motion.g initial={{ opacity: 0, scale: 0.4 }} animate={{ opacity: [0, 1, 0], scale: [0.4, 1.2, 1.6] }} transition={{ duration: 1.2 }}>
-                  <circle cx="790" cy="460" r="30" fill="none" stroke="#93c5fd" strokeWidth="3" />
-                  <circle cx="790" cy="460" r="50" fill="none" stroke="#93c5fd" strokeWidth="2" opacity="0.6" />
+                <motion.g initial={{ opacity: 0 }} animate={{ opacity: [0, 1, 0] }} transition={{ duration: 1.3 }}>
+                  <motion.g
+                    initial={{ y: 10, scaleY: 0.3 }}
+                    animate={{ y: [10, -26, 6], scaleY: [0.3, 1, 0.5] }}
+                    transition={{ duration: 0.9, ease: "easeOut" }}
+                  >
+                    {[-18, -6, 6, 18].map((dx, i) => (
+                      <ellipse key={dx} cx={806 + dx} cy={SEA_Y + 8} rx={5 - i * 0.4} ry={14 - Math.abs(dx) / 3} fill="#bfe0f7" opacity="0.85" />
+                    ))}
+                  </motion.g>
+                  <circle cx="806" cy={SEA_Y + 12} r="26" fill="none" stroke="#93c5fd" strokeWidth="3" />
+                  <circle cx="806" cy={SEA_Y + 12} r="46" fill="none" stroke="#93c5fd" strokeWidth="2" opacity="0.5" />
+                </motion.g>
+              )}
+
+              {/* Touchdown puff on the deck. */}
+              {phase === "done" && landed && !reducedMotion && (
+                <motion.g initial={{ opacity: 0 }} animate={{ opacity: [0, 0.7, 0] }} transition={{ duration: 0.8 }}>
+                  <ellipse cx="640" cy={DECK_Y - 4} rx="30" ry="7" fill="#e5e7eb" opacity="0.5" />
                 </motion.g>
               )}
             </svg>

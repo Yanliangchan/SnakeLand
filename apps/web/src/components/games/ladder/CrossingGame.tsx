@@ -30,13 +30,23 @@ const LANE_W = 88;
 
 function Duck({ squashed }: { squashed: boolean }) {
   return (
-    <svg width="46" height="46" viewBox="0 0 46 46" aria-hidden style={{ transform: squashed ? "scaleY(0.35)" : undefined, transformOrigin: "bottom" }}>
-      <ellipse cx="23" cy="42" rx="12" ry="3" fill="rgba(0,0,0,0.35)" />
-      <ellipse cx="22" cy="28" rx="13" ry="11" fill="#facc15" />
-      <circle cx="28" cy="15" r="8" fill="#fde047" />
-      <path d="M35 15 L43 17 L35 19 Z" fill="#fb923c" />
-      <circle cx="30" cy="13" r="1.8" fill={squashed ? "#ff4d4d" : "#0a0a0a"} />
-      <path d="M12 26 Q18 22 22 28" stroke="#eab308" strokeWidth="2" fill="none" />
+    <svg width="48" height="48" viewBox="0 0 48 48" aria-hidden style={{ transform: squashed ? "scaleY(0.32)" : undefined, transformOrigin: "bottom" }}>
+      <ellipse cx="24" cy="43" rx="13" ry="3" fill="rgba(0,0,0,0.35)" />
+      {/* Feet */}
+      <path d="M18 40 l-4 4 M22 41 l-1 4" stroke="#fb923c" strokeWidth="2.4" strokeLinecap="round" />
+      {/* Body + tail */}
+      <ellipse cx="22" cy="29" rx="14" ry="12" fill="#facc15" />
+      <path d="M9 27 Q4 24 6 30 Q10 30 12 30 Z" fill="#eab308" />
+      {/* Wing */}
+      <path d="M16 26 Q24 22 30 27 Q24 31 16 30 Z" fill="#eab308" />
+      {/* Head */}
+      <circle cx="30" cy="15" r="8.5" fill="#fde047" />
+      {/* Beak */}
+      <path d="M37 14 L46 16 L37 19 Z" fill="#fb923c" />
+      <path d="M37 16 L45 16.7" stroke="#c2740a" strokeWidth="0.8" />
+      {/* Eye + cheek */}
+      <circle cx="32" cy="13" r="2" fill={squashed ? "#ff4d4d" : "#0a0a0a"} />
+      <circle cx="32.7" cy="12.3" r="0.7" fill="#fff" />
     </svg>
   );
 }
@@ -44,15 +54,37 @@ function Duck({ squashed }: { squashed: boolean }) {
 function Car({ colour, delay, duration, still }: { colour: string; delay: number; duration: number; still?: boolean }) {
   return (
     <div
-      className={cn("absolute left-1/2 -ml-[17px] w-[34px]", !still && "animate-[drive_linear_infinite]")}
-      style={still ? { top: "40%" } : { animationDelay: `${delay}s`, animationDuration: `${duration}s`, top: "-70px" }}
+      className={cn("absolute left-1/2 -ml-[18px] w-[36px]", !still && "animate-[drive_linear_infinite]")}
+      style={still ? { top: "40%" } : { animationDelay: `${delay}s`, animationDuration: `${duration}s`, top: "-72px" }}
     >
-      <svg width="34" height="58" viewBox="0 0 34 58" aria-hidden>
-        <rect x="2" y="2" width="30" height="54" rx="8" fill={colour} />
-        <rect x="6" y="36" width="22" height="12" rx="3" fill="#0f172a" opacity="0.75" />
-        <rect x="6" y="12" width="22" height="9" rx="3" fill="#0f172a" opacity="0.55" />
-        <rect x="4" y="52" width="6" height="3" rx="1" fill="#fef08a" />
-        <rect x="24" y="52" width="6" height="3" rx="1" fill="#fef08a" />
+      <svg width="36" height="60" viewBox="0 0 36 60" aria-hidden>
+        <defs>
+          <linearGradient id="carShade" x1="0" x2="1" y1="0" y2="0">
+            <stop offset="0" stopColor="#fff" />
+            <stop offset="0.5" stopColor="#fff" stopOpacity="0" />
+            <stop offset="1" stopColor="#000" />
+          </linearGradient>
+        </defs>
+        {/* Shadow + tyres */}
+        <ellipse cx="18" cy="55" rx="15" ry="4" fill="rgba(0,0,0,0.3)" />
+        <rect x="1" y="12" width="4" height="12" rx="2" fill="#0b1220" />
+        <rect x="31" y="12" width="4" height="12" rx="2" fill="#0b1220" />
+        <rect x="1" y="36" width="4" height="12" rx="2" fill="#0b1220" />
+        <rect x="31" y="36" width="4" height="12" rx="2" fill="#0b1220" />
+        {/* Body */}
+        <rect x="3" y="3" width="30" height="52" rx="9" fill={colour} />
+        <rect x="3" y="3" width="30" height="52" rx="9" fill="url(#carShade)" opacity="0.25" />
+        {/* Cabin + windows */}
+        <rect x="7" y="20" width="22" height="20" rx="4" fill="#0f172a" opacity="0.35" />
+        <rect x="7" y="35" width="22" height="12" rx="3" fill="#bcd7f0" opacity="0.85" />
+        <rect x="7" y="12" width="22" height="9" rx="3" fill="#bcd7f0" opacity="0.7" />
+        {/* Roof line */}
+        <rect x="9" y="29" width="18" height="4" rx="2" fill="#fff" opacity="0.12" />
+        {/* Headlights (facing down, the way it drives) */}
+        <rect x="5" y="52" width="7" height="3.5" rx="1.6" fill="#fff7cc" />
+        <rect x="24" y="52" width="7" height="3.5" rx="1.6" fill="#fff7cc" />
+        <rect x="6" y="4" width="6" height="3" rx="1.4" fill="#f0524b" opacity="0.8" />
+        <rect x="24" y="4" width="6" height="3" rx="1.4" fill="#f0524b" opacity="0.8" />
       </svg>
     </div>
   );

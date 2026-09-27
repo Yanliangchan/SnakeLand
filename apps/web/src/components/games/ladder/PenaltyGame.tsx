@@ -36,21 +36,43 @@ interface Shot {
   keeper: number[];
 }
 
-function Keeper({ x, diving, dir }: { x: number; diving: boolean; dir: number }) {
+/** A goalkeeper in an amber kit and gloves. Drawn feet-at-origin; dives by lunging in `dir`. */
+function Keeper({ x, diving, dir, reduced }: { x: number; diving: boolean; dir: number; reduced: boolean }) {
   return (
     <motion.g
       initial={false}
-      animate={{ x, rotate: diving ? dir * 62 : 0, scale: 1.45 }}
-      transition={{ duration: 0.38, ease: expoOut }}
-      style={{ originX: "50%", originY: "100%" }}
+      animate={{ x, rotate: diving ? dir * 74 : 0, y: diving ? -4 : 0 }}
+      transition={{ duration: 0.42, ease: expoOut }}
+      style={{ originX: "0px", originY: "0px" }}
     >
-      {/* Arms up, gloves out. */}
-      <path d="M-26 -58 L-12 -40 M26 -58 L12 -40" stroke="#fbbf24" strokeWidth="6" strokeLinecap="round" />
-      <circle cx="-27" cy="-60" r="6" fill="#f8fafc" />
-      <circle cx="27" cy="-60" r="6" fill="#f8fafc" />
-      <rect x="-13" y="-44" width="26" height="30" rx="8" fill="#fbbf24" />
-      <circle cx="0" cy="-52" r="9" fill="#fde7c7" />
-      <path d="M-9 -14 L-11 0 M9 -14 L11 0" stroke="#1f2937" strokeWidth="7" strokeLinecap="round" />
+      {/* A subtle ready-stance bob while waiting for the kick. */}
+      <motion.g
+        animate={!diving && !reduced ? { scaleY: [1, 0.97, 1], y: [0, 1.5, 0] } : { scaleY: 1, y: 0 }}
+        transition={{ duration: 1.1, repeat: !diving && !reduced ? Infinity : 0, ease: "easeInOut" }}
+        style={{ originX: "0px", originY: "0px" }}
+      >
+        <g transform="scale(1.5)">
+          {/* Legs + boots, planted apart. */}
+          <path d="M-7 0 L-4 -22" stroke="#111827" strokeWidth="7" strokeLinecap="round" />
+          <path d="M7 0 L4 -22" stroke="#111827" strokeWidth="7" strokeLinecap="round" />
+          <ellipse cx="-9" cy="0" rx="6" ry="2.6" fill="#0b1220" />
+          <ellipse cx="9" cy="0" rx="6" ry="2.6" fill="#0b1220" />
+          {/* Shorts */}
+          <path d="M-9 -19 L9 -19 L7 -29 L-7 -29 Z" fill="#0b3d2e" />
+          {/* Jersey */}
+          <path d="M-9 -29 Q-11 -46 -6 -51 L6 -51 Q11 -46 9 -29 Z" fill="#f59e0b" />
+          <path d="M-6 -51 L6 -51 L5 -47 L-5 -47 Z" fill="#fbbf24" />
+          <path d="M-8 -34 L8 -34" stroke="#c2740a" strokeWidth="1.5" opacity="0.7" />
+          {/* Arms out to raised gloves. */}
+          <path d="M-7 -48 Q-19 -55 -27 -66" stroke="#f59e0b" strokeWidth="6" strokeLinecap="round" fill="none" />
+          <path d="M7 -48 Q19 -55 27 -66" stroke="#f59e0b" strokeWidth="6" strokeLinecap="round" fill="none" />
+          <circle cx="-29" cy="-68" r="6.5" fill="#f8fafc" stroke="#cbd5e1" strokeWidth="1.5" />
+          <circle cx="29" cy="-68" r="6.5" fill="#f8fafc" stroke="#cbd5e1" strokeWidth="1.5" />
+          {/* Head + hair. */}
+          <circle cx="0" cy="-59" r="7" fill="#f2c79b" />
+          <path d="M-7 -60 Q0 -69 7 -60 L7 -63 Q0 -68 -7 -63 Z" fill="#3f2d1e" />
+        </g>
+      </motion.g>
     </motion.g>
   );
 }
@@ -58,7 +80,7 @@ function Keeper({ x, diving, dir }: { x: number; diving: boolean; dir: number })
 export function PenaltyGame() {
   const g = useLadderGame("penalty");
   const { round, slip, pending } = g;
-  const { speed } = useSettings();
+  const { speed, reducedMotion } = useSettings();
   const [mode, setMode] = useState<PenaltyMode>("medium");
   const [fairOpen, setFairOpen] = useState(false);
   const activeMode = (round?.mode as PenaltyMode | undefined) ?? mode;
@@ -275,7 +297,7 @@ export function PenaltyGame() {
               })}
 
               <g transform={`translate(0 ${GY + GH})`}>
-                <Keeper key={round?.id ?? "idle"} x={keeperX} diving={!!shot} dir={dir} />
+                <Keeper key={round?.id ?? "idle"} x={keeperX} diving={!!shot} dir={dir} reduced={reducedMotion} />
               </g>
 
               {/* The ball: flies from the spot to the chosen target, and bounces off the keeper on a save. */}

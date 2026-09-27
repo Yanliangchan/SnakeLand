@@ -16,7 +16,7 @@ import {
 import { GameShell, PanelSection } from "@/components/GameShell";
 import { Button, WinCelebration } from "@/components/ui";
 import { cn } from "@/lib/cn";
-import { fade, fadeUp, tap, tapTransition } from "@/lib/motion";
+import { fadeUp, tap, tapTransition } from "@/lib/motion";
 import { ChipTray, StakeSummary } from "../shared/ChipSlip";
 import { InstantFairness } from "../shared/InstantFairness";
 import { OptionPills } from "../shared/OptionPills";
@@ -30,6 +30,8 @@ const ACCENT = "#e879f9";
 type DoorState = "locked" | "open" | "picked" | "trap" | "safe-shown" | "dim";
 
 function Door({ state, onClick, disabled, label }: { state: DoorState; onClick?: () => void; disabled?: boolean; label: string }) {
+  // A door leaf that swings open when its floor is resolved.
+  const swung = state === "picked" || state === "trap" || state === "safe-shown";
   return (
     <motion.button
       whileTap={state === "open" && !disabled ? tap : undefined}
@@ -38,20 +40,43 @@ function Door({ state, onClick, disabled, label }: { state: DoorState; onClick?:
       disabled={disabled || state !== "open"}
       aria-label={label}
       className={cn(
-        "relative grid h-full min-h-0 flex-1 place-items-center rounded-[10px] border text-[13px] font-semibold transition-colors",
+        "group relative grid h-full min-h-0 flex-1 place-items-center overflow-hidden rounded-[10px] border text-[13px] font-semibold transition-colors [perspective:340px]",
         state === "open" && "cursor-pointer border-[color-mix(in_srgb,#e879f9_55%,transparent)] bg-[color-mix(in_srgb,#e879f9_10%,transparent)] hover:bg-[color-mix(in_srgb,#e879f9_22%,transparent)]",
         state === "locked" && "border-hairline bg-bg/40",
-        state === "picked" && "border-win/60 bg-win/15 text-win",
-        state === "trap" && "border-loss/70 bg-loss/20 text-loss",
-        state === "safe-shown" && "border-win/30 bg-win/5 text-win/70",
+        state === "picked" && "border-win/60 bg-win/10 text-win",
+        state === "trap" && "border-loss/70 bg-loss/15 text-loss",
+        state === "safe-shown" && "border-win/25 bg-win/5 text-win/70",
         state === "dim" && "border-hairline bg-bg/30 text-fg-disabled",
       )}
     >
-      <AnimatePresence mode="wait" initial={false}>
-        <motion.span key={state} {...fade}>
-          {state === "picked" ? "✓" : state === "trap" ? "✕" : state === "safe-shown" ? "•" : ""}
+      {/* What's behind the door: a glow for safe, a bomb for the trap. */}
+      {swung && (
+        <motion.span
+          key="behind"
+          initial={{ opacity: 0, scale: 0.6 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ delay: 0.16, ...tapTransition }}
+          className="pointer-events-none absolute inset-0 grid place-items-center text-[18px]"
+        >
+          {state === "trap" ? "💣" : state === "picked" ? "★" : "•"}
         </motion.span>
-      </AnimatePresence>
+      )}
+      {/* The door leaf, hinged on the left; it swings back to reveal the result. */}
+      <motion.span
+        aria-hidden
+        initial={false}
+        animate={{ rotateY: swung ? -105 : 0, opacity: swung ? 0.15 : 1 }}
+        transition={{ duration: 0.4, ease: [0.2, 0.8, 0.2, 1] }}
+        className={cn(
+          "pointer-events-none absolute inset-0 origin-left rounded-[9px] [backface-visibility:hidden]",
+          state === "open" ? "bg-[color-mix(in_srgb,#e879f9_16%,#141414)]" : "bg-elevated",
+        )}
+        style={{ transformStyle: "preserve-3d" }}
+      >
+        {/* Door handle */}
+        <span className="absolute right-1.5 top-1/2 h-2 w-2 -translate-y-1/2 rounded-full bg-[#facc15]/80" />
+        <span className="absolute inset-x-2 top-1/2 h-px -translate-y-1/2 bg-white/8" />
+      </motion.span>
     </motion.button>
   );
 }
