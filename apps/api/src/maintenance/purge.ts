@@ -2,7 +2,12 @@ import { sql } from "drizzle-orm";
 import type { Db, Tx } from "../db/client";
 
 export const GAME_DATA_RETENTION_DAYS = 7;
-export const GUEST_INACTIVE_HOURS = 24;
+/**
+ * How long a guest can sit with no activity (no bet, claim or session refresh)
+ * before it's deleted. Kept short so abandoned guests clear quickly; anyone
+ * still playing keeps a fresh transaction or session and is never removed.
+ */
+export const GUEST_INACTIVE_HOURS = 2;
 const BATCH = 2_000;
 
 export interface PurgeReport {

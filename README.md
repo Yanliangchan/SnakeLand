@@ -250,7 +250,7 @@ transaction, so rankings never scan the ledger. Only registered, non-suspended p
 A background job runs every 10 minutes on one instance (Redis lease):
 
 - **Guests** are deleted with everything they own when they sign out or leave, right after their chips move
-  into a new account, or after 24 hours with no activity (no bet, claim or session refresh). A browser can't
+  into a new account, or after 2 hours with no activity (no bet, claim or session refresh). A browser can't
   reliably report that a tab closed for good, so inactivity is the signal for guests who just leave. Registered accounts are never deleted.
 - **Finished game rows** (rounds, shoes, closed tables, drops, settled roulette and crash bets) are deleted after
   7 days.

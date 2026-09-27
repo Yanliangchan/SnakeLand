@@ -9,7 +9,7 @@ import { loadEnv } from "../src/env";
 import { FairSeedService } from "../src/games/fair-seeds";
 import { MinesService } from "../src/games/mines/service";
 import { PlinkoService } from "../src/games/plinko/service";
-import { PurgeService } from "../src/maintenance/purge";
+import { GUEST_INACTIVE_HOURS, PurgeService } from "../src/maintenance/purge";
 import { ProgressService } from "../src/progress/service";
 import { WalletService } from "../src/wallet/wallet-service";
 import { createUser, testDb } from "./helpers";
@@ -148,7 +148,7 @@ describe("Purge", () => {
     expect(await wallet.ledgerSum(player)).toBe((await wallet.getWallet(player)).balance);
   });
 
-  it("closes guests after 24 hours without any activity", async () => {
+  it("closes idle guests after the inactivity window, keeping active ones", async () => {
     const HOUR = 3_600_000;
     const guestAt = async (hoursAgo: number) => {
       const id = crypto.randomUUID();
@@ -161,9 +161,10 @@ describe("Purge", () => {
       });
       return id;
     };
-    const gone = await guestAt(30); // arrived yesterday, never came back
-    const busy = await guestAt(30); // arrived yesterday, still playing
-    const fresh = await guestAt(1); // arrived an hour ago
+    const old = GUEST_INACTIVE_HOURS * 3; // well past the window, never came back
+    const gone = await guestAt(old); // idle beyond the window
+    const busy = await guestAt(old); // idle-aged but still playing
+    const fresh = await guestAt(GUEST_INACTIVE_HOURS / 2); // arrived within the window
     await wallet.apply({ userId: busy, amount: -10, type: "bet", game: "plinko", roundId: crypto.randomUUID() });
 
     expect(await purge.purgeInactiveGuests()).toBeGreaterThan(0);
