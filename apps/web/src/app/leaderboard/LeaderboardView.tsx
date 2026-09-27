@@ -16,6 +16,7 @@ import { EmptyState, ErrorState } from "@/components/ErrorState";
 import { PlayerCardSheet } from "@/components/PlayerCard";
 import { NAME_COLOUR, PlayerName, TitleBadge } from "@/components/PlayerName";
 import { Segmented } from "@/components/Segmented";
+import { ListSkeleton } from "@/components/Skeleton";
 import { Card } from "@/components/ui";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
@@ -160,7 +161,7 @@ export function LeaderboardView() {
                   error ? (
                     <ErrorState title="Couldn’t load the leaderboard" onRetry={() => setReload((n) => n + 1)} />
                   ) : (
-                    <p className="py-16 text-center text-[13px] text-fg-muted">Loading…</p>
+                    <ListSkeleton rows={8} />
                   )
                 ) : board.entries.length === 0 ? (
                   <EmptyState

@@ -149,3 +149,12 @@ export function playSound(name: SoundName) {
       break;
   }
 }
+
+/** A short blip that rises in pitch with the crash multiplier (per whole-number step). */
+export function climbTone(level: number) {
+  const ac = audio();
+  if (!ac) return;
+  const t = ac.currentTime + 0.005;
+  const freq = 440 * Math.pow(1.09, Math.min(48, level));
+  tone(ac, freq, t, 0.06, 0.03, "triangle");
+}

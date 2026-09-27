@@ -1,11 +1,12 @@
 import type { Metadata, Viewport } from "next";
 import { headers } from "next/headers";
 import { Providers } from "@/providers";
+import { BottomNav } from "@/components/BottomNav";
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: { default: "snakeland", template: "%s · snakeland" },
-  description: "Nine casino games with virtual chips. Provably fair. No real money.",
+  description: "Eleven casino games plus a hacking lab, with virtual chips. Provably fair. No real money.",
   icons: { icon: "/icon.svg", apple: "/apple-touch-icon.png" },
   // Installable: "Add to Home Screen" opens full screen, like an app.
   appleWebApp: { capable: true, title: "snakeland", statusBarStyle: "black-translucent" },
@@ -23,11 +24,19 @@ export const viewport: Viewport = {
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   // Reading headers opts every page into dynamic rendering, which the per-request CSP nonce requires.
-  await headers();
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
+  // Set the theme before first paint so there's no flash of the wrong colours.
+  const themeScript = `(function(){try{var p=JSON.parse(localStorage.getItem('snk:prefs')||'{}');var t=p.theme||'dark';var d=t==='system'?(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark'):t;var e=document.documentElement;e.dataset.theme=d;e.style.colorScheme=d;}catch(e){}})();`;
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script nonce={nonce} dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
       <body>
-        <Providers>{children}</Providers>
+        <Providers>
+          {children}
+          <BottomNav />
+        </Providers>
       </body>
     </html>
   );

@@ -237,6 +237,7 @@ export class ProgressService {
         biggestWin: row.biggestWin ?? 0,
         roundsPlayed: gameRows.reduce((s, g) => s + Number(g.rounds), 0),
         favouriteGame: gameRows[0]?.game ?? null,
+        gameBreakdown: gameRows.map((g) => ({ game: g.game, rounds: Number(g.rounds) })),
       },
       perks: {
         nextClaim: claimTerms(row.isAnonymous ? null : allTime.rank),

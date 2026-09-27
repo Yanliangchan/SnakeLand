@@ -117,6 +117,8 @@ export interface ProfileDTO {
     biggestWin: Chips;
     roundsPlayed: number;
     favouriteGame: string | null;
+    /** Rounds per game, most-played first (powers the profile donut). */
+    gameBreakdown: { game: string; rounds: number }[];
   };
   perks: {
     nextClaim: ClaimTerms;

@@ -3,6 +3,7 @@
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import { ALL_TIME_PERKS, GAMES, isGameId, type ProfileDTO } from "@snakeland/shared";
+import { GameDonut } from "@/components/GameDonut";
 import { AppHeader } from "@/components/AppHeader";
 import { ErrorState } from "@/components/ErrorState";
 import { NAME_COLOUR, PlayerName, TitleBadge } from "@/components/PlayerName";
@@ -142,6 +143,14 @@ export function ProfileView() {
                   sub={fav ? `Mostly ${isGameId(fav) ? GAMES[fav].name : fav}` : "played"}
                 />
               </div>
+              {p.stats.gameBreakdown.length > 0 && (
+                <div className="mt-5 border-t border-hairline pt-4">
+                  <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-fg-muted">Games played</p>
+                  <div className="mt-3">
+                    <GameDonut breakdown={p.stats.gameBreakdown} />
+                  </div>
+                </div>
+              )}
             </Card>
 
             <Card className="h-fit">

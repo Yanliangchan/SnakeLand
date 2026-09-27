@@ -43,6 +43,21 @@
     color-scheme: dark;
     background: var(--color-bg);
   }
+  /* Light theme: the tokens flip, so everything token-based follows. */
+  html[data-theme="light"] {
+    color-scheme: light;
+    --color-bg: #f6f7f9;
+    --color-surface: #ffffff;
+    --color-elevated: #eef1f5;
+    --color-hairline: rgb(0 0 0 / 0.1);
+    --color-hairline-strong: rgb(0 0 0 / 0.18);
+    --color-fg: #0d0d10;
+    --color-fg-muted: #5b6472;
+    --color-fg-disabled: #9aa2ad;
+    --color-win: #00a862;
+    --color-loss: #e5484d;
+    background: var(--color-bg);
+  }
   body {
     background: var(--color-bg);
     color: var(--color-fg);
@@ -58,9 +73,19 @@
   ::selection {
     background: rgb(255 255 255 / 0.16);
   }
+  html[data-theme="light"] ::selection {
+    background: rgb(0 0 0 / 0.12);
+  }
+  /* Colour-blind-safe state colours (blue win, orange loss). */
+  html[data-cb] {
+    --color-win: #3b82f6;
+    --color-loss: #f59e0b;
+  }
+  /* Accessibility: a clearly visible focus ring on both themes. */
   :focus-visible {
-    outline: 2px solid rgb(255 255 255 / 0.6);
+    outline: 2px solid var(--color-fg);
     outline-offset: 2px;
+    border-radius: 3px;
   }
 }
 
@@ -91,4 +116,10 @@
   to {
     transform: translateY(120cqh);
   }
+}
+
+/* Skeleton shimmer. */
+@keyframes shimmer {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
 }

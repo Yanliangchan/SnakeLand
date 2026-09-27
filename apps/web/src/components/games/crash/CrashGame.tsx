@@ -18,6 +18,7 @@ import { Button, Toggle, WinCelebration } from "@/components/ui";
 import { ApiError } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { crashApi, useCrashSocket } from "@/lib/crash-api";
+import { climbTone, setVolume } from "@/lib/sound";
 import { fadeUp, tap, tapTransition } from "@/lib/motion";
 import { recordRound } from "@/lib/session-stats";
 import { useSession } from "@/providers/session";
@@ -71,7 +72,7 @@ function LivePayout({ round, amount, offsetMs }: { round: CrashRoundDTO; amount:
 
 export function CrashGame() {
   const { me, setWallet } = useSession();
-  const { play } = useSettings();
+  const { play, prefs, soundOn, reducedMotion } = useSettings();
   const balance = me?.wallet.balance ?? 0;
   const slip = useChipSlip(Math.min(CRASH_LIMITS.maxBet, balance));
   const [autoOn, setAutoOn] = useState(false);
@@ -114,6 +115,25 @@ export function CrashGame() {
   }, []);
   const { state, setState, connected, offsetMs } = useCrashSocket({ onSettled, onAutoCashout, onState });
   const round = state?.round ?? null;
+
+  // A rising tick each whole-number the multiplier passes while flying.
+  useEffect(() => {
+    if (!soundOn || reducedMotion || round?.phase !== "running") return;
+    let raf = 0;
+    let last = 1;
+    const loop = () => {
+      const { m } = liveMultiplier(round, Date.now() + (offsetMs.current ?? 0));
+      const step = Math.floor(m);
+      if (step > last && step >= 2) {
+        last = step;
+        setVolume(prefs.volume);
+        climbTone(step - 1);
+      }
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, [round, soundOn, reducedMotion, offsetMs, prefs.volume]);
 
   // Initial snapshot (with my bet), then the socket keeps it live.
   useEffect(() => {

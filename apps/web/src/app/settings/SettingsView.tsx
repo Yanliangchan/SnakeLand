@@ -93,6 +93,31 @@ export function SettingsView() {
           />
         </Card>
 
+        <Card className="mt-3" transition={{ ...fadeUp.transition, delay: 0.085 }}>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-[15px] font-medium">Appearance</p>
+              <p className="mt-0.5 text-[13px] text-fg-muted">Dark by default, or switch to light.</p>
+            </div>
+            <Segmented
+              value={prefs.theme}
+              onChange={(theme) => setPrefs({ theme })}
+              options={[
+                { value: "system", label: "System" },
+                { value: "dark", label: "Dark" },
+                { value: "light", label: "Light" },
+              ]}
+            />
+          </div>
+          <div className="mt-4 flex items-center justify-between border-t border-hairline pt-4">
+            <div>
+              <p className="text-[15px] font-medium">Colour-blind mode</p>
+              <p className="mt-0.5 text-[13px] text-fg-muted">Use blue and orange for wins and losses.</p>
+            </div>
+            <Toggle label="Colour-blind mode" checked={prefs.colorBlind} onChange={(on) => setPrefs({ colorBlind: on })} />
+          </div>
+        </Card>
+
         <Card className="mt-3" transition={{ ...fadeUp.transition, delay: 0.09 }}>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>

@@ -267,9 +267,12 @@ games only run while someone is playing").
   play plus every keyboard shortcut.
 - **Session stats**: each game shows this tab's rounds, wagered, net and best multiplier.
 - **Mines**: after a bust you see what cashing out one pick earlier would have paid, and can replay the round.
-- **Settings**: sound (with volume), haptics (vibration on supported phones), motion (system / reduced / full),
-  fast mode and notifications. Sounds are synthesized in the browser, so there are no audio files to download.
+- **Settings**: appearance (dark / light / system), a colour-blind-safe mode (blue/orange wins and losses),
+  sound (with volume), haptics (vibration on supported phones), motion (system / reduced / full), fast mode and
+  notifications. Sounds are synthesized in the browser, so there are no audio files to download.
 - **Game switcher**: tap a game's title (or press `G`) to jump to any other game.
+- **Welcome**: a one-time intro on first visit; skeleton loaders while pages fetch; confetti and coin bursts on
+  bigger wins; a phone-only bottom tab bar; and a rounds-per-game donut on the profile.
 - **Profiles**: tap any leaderboard name for that player's public card (no balance or email).
 - **Installable**: a web app manifest and icons, so "Add to Home Screen" opens it full screen.
 - Offline banner, retry cards for failed loads, and an error page that never shows a blank screen.

@@ -10,6 +10,7 @@ import { BalanceCounter } from "@/components/ui";
 import { expoOut, fadeUp, tap, tapTransition } from "@/lib/motion";
 import { useSession } from "@/providers/session";
 import { DailyClaim } from "./DailyClaim";
+import { WelcomeModal } from "./WelcomeModal";
 
 function greeting(): string {
   const h = new Date().getHours();
@@ -24,6 +25,7 @@ export function Lobby() {
   return (
     <div className="min-h-dvh">
       <AppHeader />
+      <WelcomeModal />
       <main className="mx-auto w-full max-w-[1440px] px-3 pb-10 pt-4 sm:px-4 lg:px-6 lg:pt-6">
         <div className="grid gap-3 md:grid-cols-[1.3fr_1fr]">
           <motion.section {...fadeUp} className="flex flex-col justify-between gap-4 rounded-[var(--radius-card)] bg-surface p-5 hairline sm:p-6">

@@ -1,10 +1,11 @@
 "use client";
 
 import { MotionConfig } from "framer-motion";
-import { createContext, useCallback, useContext, useMemo, useSyncExternalStore } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useSyncExternalStore } from "react";
 import { playSound, setVolume, type SoundName } from "@/lib/sound";
 
 export type MotionPref = "system" | "reduced" | "full";
+export type ThemePref = "system" | "dark" | "light";
 
 export interface Prefs {
   sound: boolean;
@@ -14,11 +15,15 @@ export interface Prefs {
   fast: boolean;
   /** Sound volume, 0–1. */
   volume: number;
+  /** Colour theme. Defaults to dark (the casino look). */
+  theme: ThemePref;
+  /** Colour-blind-safe win/loss colours (blue/orange instead of green/red). */
+  colorBlind: boolean;
 }
 
 const KEY = "snk:prefs";
 const LEGACY_SOUND_KEY = "snk:sound";
-const DEFAULTS: Prefs = { sound: false, haptics: true, motion: "system", fast: false, volume: 0.7 };
+const DEFAULTS: Prefs = { sound: false, haptics: true, motion: "system", fast: false, volume: 0.7, theme: "dark", colorBlind: false };
 const listeners = new Set<() => void>();
 let memory: Prefs | null = null;
 
@@ -58,6 +63,15 @@ const subscribeOs = (l: () => void) => {
 };
 const noopSubscribe = () => () => {};
 const getOs = () => mq()?.matches ?? false;
+
+// OS "prefers light", tracked live (for the "system" theme option).
+const lightMq = () => (typeof window === "undefined" ? null : window.matchMedia("(prefers-color-scheme: light)"));
+const subscribeOsLight = (l: () => void) => {
+  const m = lightMq();
+  m?.addEventListener("change", l);
+  return () => m?.removeEventListener("change", l);
+};
+const getOsLight = () => lightMq()?.matches ?? false;
 
 /** Vibration patterns (ms). Ignored where the Vibration API is missing (e.g. iOS Safari). */
 const HAPTIC: Record<SoundName | "heavy", number | number[] | 0> = {
@@ -112,6 +126,18 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     () => false,
   );
   const reducedMotion = prefs.motion === "reduced" || (prefs.motion === "system" && osReduced);
+  const osLight = useSyncExternalStore(subscribeOsLight, getOsLight, () => false);
+  const theme: "dark" | "light" = prefs.theme === "system" ? (osLight ? "light" : "dark") : prefs.theme;
+
+  // Keep the document theme + colour-blind mode in sync.
+  useEffect(() => {
+    const el = document.documentElement;
+    el.dataset.theme = theme;
+    el.style.colorScheme = theme;
+  }, [theme]);
+  useEffect(() => {
+    document.documentElement.toggleAttribute("data-cb", prefs.colorBlind);
+  }, [prefs.colorBlind]);
 
   const play = useCallback((name: SoundName) => {
     const p = getSnapshot();

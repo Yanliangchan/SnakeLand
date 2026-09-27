@@ -15,6 +15,7 @@ import {
 import { AppHeader } from "@/components/AppHeader";
 import { EmptyState, ErrorState } from "@/components/ErrorState";
 import { Segmented } from "@/components/Segmented";
+import { CardGridSkeleton } from "@/components/Skeleton";
 import { Button, ButtonLink, Card, Sheet } from "@/components/ui";
 import { api, ApiError } from "@/lib/api";
 import { cn } from "@/lib/cn";
@@ -377,7 +378,7 @@ export function LabView() {
             error ? (
               <ErrorState title="Couldn’t load the Lab" onRetry={() => setReload((n) => n + 1)} />
             ) : (
-              <p className="py-16 text-center text-[13px] text-fg-muted">Loading…</p>
+              <CardGridSkeleton count={9} />
             )
           ) : shown.length === 0 ? (
             <EmptyState title="Nothing here yet" message="New challenges drop from time to time." />

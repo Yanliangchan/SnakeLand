@@ -4,6 +4,7 @@ import { motion, useAnimationControls } from "framer-motion";
 import { useEffect } from "react";
 import { CELEBRATE_ABOVE_MULTIPLIER, celebrate } from "@/lib/motion";
 import { useSettings } from "@/providers/settings";
+import { Confetti } from "./Confetti";
 
 /**
  * Pulses its children once per `trigger` change, but only when the payout
@@ -31,8 +32,12 @@ export function WinCelebration({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trigger]);
 
+  // Confetti keys off the trigger during render (no effect state), sized by the multiplier.
+  const celebrating = trigger !== null && multiplier > CELEBRATE_ABOVE_MULTIPLIER;
+
   return (
     <motion.div animate={controls} className={className}>
+      <Confetti fire={celebrating ? trigger : null} intensity={Math.min(3, 0.7 + Math.log2(Math.max(1, multiplier)) / 2)} />
       {children}
     </motion.div>
   );
