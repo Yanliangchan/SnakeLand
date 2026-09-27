@@ -24,7 +24,7 @@ export function useChipSlip(limit: number) {
   const add = useCallback(
     (value: ChipValue) => {
       if (value > room) return;
-      play("click");
+      play("chip");
       setChips((c) => {
         const next = [...c, { id: tray[value], value }];
         return next.length > MAX_STACK ? chipsFor(sum(next)) : next;

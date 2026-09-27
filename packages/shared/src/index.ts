@@ -12,3 +12,4 @@ export * from "./live";
 export * from "./progress";
 export * from "./api";
 export * from "./admin";
+export * from "./lab";

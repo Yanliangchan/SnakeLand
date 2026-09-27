@@ -32,6 +32,11 @@ import { liveRoutes } from "./http/routes/live";
 import { rouletteRoutes } from "./http/routes/roulette";
 import { adminRoutes } from "./http/routes/admin";
 import { progressRoutes } from "./http/routes/progress";
+import { labRoutes } from "./http/routes/lab";
+import { pushRoutes } from "./http/routes/push";
+import { LabService } from "./lab/service";
+import { ChatService, MemoryChatStore, RedisChatStore } from "./chat/service";
+import { PushService } from "./push/service";
 import { MemoryAdminStore, RedisAdminStore } from "./admin/auth";
 import { AdminService } from "./admin/service";
 import { MaintenanceRunner } from "./maintenance/runner";
@@ -124,14 +129,25 @@ export async function buildApp({ env, db, redis }: { env: Env; db: Db; redis: Re
     return { type: "state", wheel: await roulette.wheelState(wheel.id) };
   });
   const tickets = redis ? new RedisTicketStore(redis) : new MemoryTicketStore();
+  const chat = new ChatService(db, redis ? new RedisChatStore(redis) : new MemoryChatStore(), bus);
 
   const progress = new ProgressService(db, wallet);
+  const push = new PushService(
+    db,
+    progress,
+    env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY
+      ? { publicKey: env.VAPID_PUBLIC_KEY, privateKey: env.VAPID_PRIVATE_KEY, subject: env.VAPID_SUBJECT ?? "mailto:admin@localhost" }
+      : null,
+  );
   const maintenance = new MaintenanceRunner(
     purge,
     redis ? new RedisLeadership(redis, "snk:maint:leader", 60_000) : new AlwaysLeader(),
     app.log,
+    push,
   );
   const admin = new AdminService(db, wallet, progress);
+  const lab = new LabService(db, wallet, env.BETTER_AUTH_SECRET);
+  await lab.ensureStarterPack();
   const adminStore = redis ? new RedisAdminStore(redis) : new MemoryAdminStore();
 
   app.addHook("onClose", async () => {
@@ -221,12 +237,15 @@ export async function buildApp({ env, db, redis }: { env: Env; db: Db; redis: Re
   await app.register(blackjackRoutes, { auth, blackjack });
   await app.register(instantRoutes, { auth, mines, plinko });
   await app.register(baccaratRoutes, { auth, baccarat });
-  await app.register(liveRoutes, { auth, hub, tickets, webOrigins: env.WEB_ORIGINS });
+  await app.register(liveRoutes, { auth, hub, tickets, webOrigins: env.WEB_ORIGINS, chat });
   await app.register(rouletteRoutes, { auth, roulette });
   await app.register(crashRoutes, { auth, crash });
   await app.register(arcadeRoutes, { auth, carrier, ladder });
   await app.register(progressRoutes, { auth, progress, purge });
+  await app.register(pushRoutes, { auth, push });
+  await app.register(labRoutes, { auth, lab, secureCookies: env.NODE_ENV === "production" });
   await app.register(adminRoutes, {
+    lab,
     passwordHash: env.ADMIN_PASSWORD_HASH,
     secureCookies: env.NODE_ENV === "production",
     store: adminStore,
@@ -235,5 +254,5 @@ export async function buildApp({ env, db, redis }: { env: Env; db: Db; redis: Re
     purge,
   });
 
-  return { app, auth, wallet, blackjack, mines, plinko, baccarat, roulette, dealer, carrier, ladder, crash, crashDealer, progress, purge, maintenance, admin, presence };
+  return { app, auth, wallet, blackjack, mines, plinko, baccarat, roulette, dealer, carrier, ladder, crash, crashDealer, progress, purge, maintenance, admin, presence, lab, chat, push };
 }

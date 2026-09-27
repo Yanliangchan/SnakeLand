@@ -267,7 +267,7 @@ export function MinesGame() {
     const total = round?.picks.length ?? 0;
     const t = setInterval(() => {
       setReplay((r) => (!r || r.step > total ? null : { ...r, step: r.step + 1 }));
-      play("flip");
+      play("pop");
     }, 350 * speed);
     return () => clearInterval(t);
     // Restart only when a new replay begins.

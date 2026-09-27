@@ -52,7 +52,7 @@ export function DailyClaim() {
     try {
       const res = await api<WalletDTO>("/v1/wallet/daily-claim", { method: "POST", body: {} });
       setWallet({ balance: res.balance, nextDailyClaimAt: res.nextDailyClaimAt });
-      play("chime");
+      play("coin");
     } catch (e) {
       if (e instanceof ApiError && e.code === "DAILY_CLAIM_NOT_READY") {
         const next = (e.body as { error?: { nextDailyClaimAt?: string } })?.error?.nextDailyClaimAt;

@@ -35,6 +35,8 @@ export const users = pgTable("users", {
   isAnonymous: boolean("is_anonymous").notNull().default(false),
   /** Set by an admin; suspended players can't play or claim. */
   suspendedAt: timestamp("suspended_at", { withTimezone: true }),
+  /** Set by an admin; muted players can read chat but not post. */
+  chatMutedAt: timestamp("chat_muted_at", { withTimezone: true }),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });
@@ -164,7 +166,7 @@ export const transactions = pgTable(
     check(
       "transactions_amount_sign",
       sql`(${t.type} = 'bet' AND ${t.amount} < 0)
-        OR (${t.type} IN ('payout', 'refund', 'daily_claim', 'signup_bonus') AND ${t.amount} > 0)
+        OR (${t.type}::text IN ('payout', 'refund', 'daily_claim', 'signup_bonus', 'lab_reward') AND ${t.amount} > 0)
         OR (${t.type}::text IN ('guest_merge', 'admin_adjust') AND ${t.amount} <> 0)`,
     ),
     check(
@@ -549,14 +551,14 @@ export const ladderRounds = pgTable(
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
-    /** "tower" or "crossing". */
+    /** "tower", "crossing", "penalty" or "hilo". */
     game: gameEnum("game").notNull(),
     mode: text("mode").notNull(),
     status: ladderStatusEnum("status").notNull().default("playing"),
     bet: bigint("bet", { mode: "number" }).notNull(),
     /** Safe steps taken. */
     level: integer("level").notNull().default(0),
-    /** Tower: door picked per floor. */
+    /** Tower: door per floor. Penalty: spot per kick. Hi-Lo: 0 higher, 1 lower, 2 skip. */
     picks: jsonb("picks").$type<number[]>().notNull().default([]),
     multiplierX100: integer("multiplier_x100").notNull().default(100),
     payout: bigint("payout", { mode: "number" }),
@@ -572,8 +574,82 @@ export const ladderRounds = pgTable(
     // One round in play per player per game.
     uniqueIndex("ladder_rounds_one_active_uq").on(t.userId, t.game).where(sql`${t.status} = 'playing'`),
     // Compared as text: the enum values are added in the same migration.
-    check("ladder_rounds_game", sql`${t.game}::text IN ('tower', 'crossing')`),
+    check("ladder_rounds_game", sql`${t.game}::text IN ('tower', 'crossing', 'penalty', 'hilo')`),
   ],
+);
+
+// ---------------------------------------------------------------------------
+// The Lab: capture-the-flag challenges that pay chips once per player
+// ---------------------------------------------------------------------------
+
+export const labChallenges = pgTable(
+  "lab_challenges",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    slug: text("slug").notNull().unique(),
+    title: text("title").notNull(),
+    category: text("category").notNull(),
+    difficulty: text("difficulty").notNull(),
+    /** Plain text shown to players. */
+    description: text("description").notNull(),
+    /** "static": one flag for everyone (only its hash is stored). "per_player": derived per user. */
+    flagMode: text("flag_mode").notNull().default("static"),
+    flagHash: text("flag_hash"),
+    reward: bigint("reward", { mode: "number" }).notNull(),
+    /** Downloadable attachments. Per-player challenges fill {{FLAG...}} placeholders. */
+    files: jsonb("files").$type<{ name: string; content: string }[]>().notNull().default([]),
+    hint: text("hint"),
+    published: boolean("published").notNull().default(false),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    check("lab_challenges_reward_positive", sql`${t.reward} > 0`),
+    check("lab_challenges_flag", sql`${t.flagMode} = 'per_player' OR ${t.flagHash} IS NOT NULL`),
+  ],
+);
+
+export const labSolves = pgTable(
+  "lab_solves",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    challengeId: uuid("challenge_id")
+      .notNull()
+      .references(() => labChallenges.id, { onDelete: "restrict" }),
+    reward: bigint("reward", { mode: "number" }).notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("lab_solves_user_challenge_uq").on(t.userId, t.challengeId)],
+);
+
+// ---------------------------------------------------------------------------
+// Push notifications (one row per opted-in device)
+// ---------------------------------------------------------------------------
+
+export const pushSubscriptions = pgTable(
+  "push_subscriptions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    endpoint: text("endpoint").notNull().unique(),
+    p256dh: text("p256dh").notNull(),
+    auth: text("auth").notNull(),
+    daily: boolean("daily").notNull().default(true),
+    titles: boolean("titles").notNull().default(true),
+    /** The daily-claim unlock we last pinged for, so each unlock pings once. */
+    dailyNotifiedFor: timestamp("daily_notified_for", { withTimezone: true }),
+    /** The weekly title we last told this device about, and when. */
+    lastTitle: text("last_title"),
+    titleNotifiedAt: timestamp("title_notified_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("push_subscriptions_user_idx").on(t.userId)],
 );
 
 // ---------------------------------------------------------------------------
@@ -617,5 +693,8 @@ export const schema = {
   crashBets,
   carrierFlights,
   ladderRounds,
+  labChallenges,
+  labSolves,
+  pushSubscriptions,
   adminAudit,
 };

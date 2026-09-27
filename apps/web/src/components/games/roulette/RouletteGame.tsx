@@ -1,6 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
+import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ROULETTE_LIMITS,
@@ -11,6 +12,7 @@ import {
   type RouletteMyBetsDTO,
   type RouletteSettlementDTO,
   type WheelId,
+  rouletteRoom,
 } from "@snakeland/shared";
 import { GameShell, PanelSection } from "@/components/GameShell";
 import { Button, WinCelebration } from "@/components/ui";
@@ -25,6 +27,9 @@ import { FairnessDialog, FairRow, VerifiedBadge } from "../shared/FairnessDialog
 import { ChipSelector, useSpotChips } from "../shared/SpotChips";
 import { BettingBoard } from "./BettingBoard";
 import { Wheel } from "./Wheel";
+
+// Chat is secondary: load it after the game itself.
+const LiveChat = dynamic(() => import("../shared/LiveChat").then((m) => m.LiveChat), { ssr: false });
 
 function message(e: unknown) {
   if (e instanceof ApiError) return e.code === "INSUFFICIENT_FUNDS" ? "Not enough chips for that." : e.message;
@@ -239,6 +244,7 @@ export function RouletteGame() {
       <GameShell
         game="roulette"
         title="Roulette"
+        headerExtra={<LiveChat room={rouletteRoom(wheelId)} />}
         tableId={`${wheelId}-${tableId}`}
         tableLabel={ROULETTE_WHEELS[wheelIndex]!.name}
         onNextTable={nextTable}

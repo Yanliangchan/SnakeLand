@@ -27,7 +27,7 @@ export function useSpotChips<K extends string>(limit: number) {
   const place = useCallback(
     (spot: K, value: ChipValue = selected): ChipValue | null => {
       if (total + value > limit) return null;
-      play("click");
+      play("chip");
       setSpots((s) => {
         const next = [...(s[spot] ?? []), { id: tray[value], value }];
         return { ...s, [spot]: next.length > MAX_PER_SPOT ? chipsFor(sum(next)) : next };
@@ -84,7 +84,7 @@ export function ChipSelector<K extends string>({
             selected={state.selected === v}
             disabled={disabled}
             onClick={() => {
-              play("click");
+              play("chip");
               state.setSelected(v);
             }}
           />

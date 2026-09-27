@@ -19,6 +19,8 @@ export function proxy(request: NextRequest) {
     "font-src 'self'",
     `connect-src 'self' ${ws}`,
     "media-src 'self' blob:",
+    "worker-src 'self'",
+    "manifest-src 'self'",
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
@@ -39,7 +41,7 @@ export const config = {
   matcher: [
     {
       // API traffic (proxied) is JSON; it needs no page CSP or nonce.
-      source: "/((?!_next/static|_next/image|favicon.ico|icon.svg|.*\\.png$|manifest.webmanifest|api/|v1/).*)",
+      source: "/((?!_next/static|_next/image|favicon.ico|icon.svg|sw.js|.*\\.png$|manifest.webmanifest|api/|v1/).*)",
       missing: [
         { type: "header", key: "next-router-prefetch" },
         { type: "header", key: "purpose", value: "prefetch" },

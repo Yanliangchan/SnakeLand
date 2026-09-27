@@ -79,3 +79,41 @@ describe("Crossing", () => {
     expect(ladderMultiplierX100("crossing", "easy", 1)).toBe(101);
   });
 });
+
+describe("Penalty", () => {
+  it("covers the right number of spots on every kick", async () => {
+    const { PENALTY_CONFIG, PENALTY_KICKS, PENALTY_MODES, penaltyKeeper } = await import("../src");
+    for (const mode of PENALTY_MODES) {
+      const k = penaltyKeeper(seed(), "c", mode);
+      expect(k).toHaveLength(PENALTY_KICKS);
+      for (const kick of k) expect(kick).toHaveLength(PENALTY_CONFIG[mode].covered);
+    }
+    expect(ladderMultiplierX100("penalty", "hard", 3)).toBe(776); // 97 × 8
+    expect(ladderMultiplierX100("penalty", "easy", 1)).toBe(121); // 97 × 5/4
+  });
+});
+
+describe("Hi-Lo", () => {
+  it("pays 97% ÷ the odds of each guess", async () => {
+    const { hiloMultiplierX100, hiloNextX100, hiloWins } = await import("../src");
+    // A King (rank 13): "lower or same" wins with every rank → no gain; "higher or same" only another King.
+    const king = 12;
+    expect(hiloNextX100([king], [], king)).toEqual({ higher: 1261, lower: null });
+    expect(hiloMultiplierX100([king, 0], ["higher"])).toBe(1261);
+    expect(hiloMultiplierX100([6, 6], ["skip"])).toBe(97);
+    expect(hiloWins(6, 6 + 13, "higher")).toBe(true); // same rank counts
+    expect(hiloWins(6, 5, "higher")).toBe(false);
+  });
+
+  it("returns 97% on any single guess", async () => {
+    const { hiloWinningRanks, hiloMultiplierX100 } = await import("../src");
+    for (let card = 0; card < 13; card++) {
+      for (const c of ["higher", "lower"] as const) {
+        const k = hiloWinningRanks(card, c);
+        const ev = (k / 13) * (hiloMultiplierX100([card, 0], [c]) / 100);
+        expect(ev).toBeLessThanOrEqual(0.97 + 1e-9);
+        expect(ev).toBeGreaterThan(0.95);
+      }
+    }
+  });
+});

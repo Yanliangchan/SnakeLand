@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
-import { ADMIN_BALANCE_MODES, MAX_BALANCE } from "@snakeland/shared";
+import { ADMIN_BALANCE_MODES, LAB_CATEGORIES, LAB_DIFFICULTIES, LAB_FLAG_MODES, LAB_MAX_REWARD, MAX_BALANCE } from "@snakeland/shared";
 import {
   ADMIN_MAX_FAILS_PER_IP,
   ADMIN_MAX_FAILS_TOTAL,
@@ -10,6 +10,7 @@ import {
   type AdminStore,
 } from "../../admin/auth";
 import type { AdminService } from "../../admin/service";
+import type { LabService } from "../../lab/service";
 import type { PurgeService } from "../../maintenance/purge";
 import type { WalletService } from "../../wallet/wallet-service";
 
@@ -40,6 +41,7 @@ export async function adminRoutes(
     admin: AdminService;
     wallet: WalletService;
     purge: PurgeService;
+    lab: LabService;
   },
 ) {
   const r = app.withTypeProvider<ZodTypeProvider>();
@@ -204,4 +206,50 @@ export async function adminRoutes(
       return { ok: true };
     },
   );
+
+  r.post(
+    "/v1/admin/players/:id/chat-mute",
+    { schema: { params: idParams, body: z.object({ muted: z.boolean() }) } },
+    async (request) => {
+      await admin.setChatMuted(request.params.id, request.body.muted);
+      await admin.audit(request.body.muted ? "chat_mute" : "chat_unmute", request.params.id, null, request.clientIp);
+      return { ok: true };
+    },
+  );
+
+  // ------------------------------------------------------------------ The Lab
+  const labInput = z.object({
+    slug: z.string().regex(/^[a-z0-9-]{1,48}$/, "Lowercase letters, digits and dashes"),
+    title: z.string().trim().min(1).max(80),
+    category: z.enum(LAB_CATEGORIES),
+    difficulty: z.enum(LAB_DIFFICULTIES),
+    description: z.string().trim().min(1).max(4000),
+    hint: z.string().trim().max(500).nullable(),
+    reward: z.number().int().min(1).max(LAB_MAX_REWARD),
+    flagMode: z.enum(LAB_FLAG_MODES),
+    flag: z.string().trim().max(200).optional(),
+    files: z
+      .array(z.object({ name: z.string().regex(/^[A-Za-z0-9._-]{1,64}$/), content: z.string().max(100_000) }))
+      .max(5),
+    published: z.boolean(),
+    sortOrder: z.number().int().min(0).max(100_000),
+  });
+  const labParams = z.object({ id: z.uuid() });
+
+  r.get("/v1/admin/lab", async () => ({ challenges: await opts.lab.adminList() }));
+  r.post("/v1/admin/lab", { schema: { body: labInput } }, async (request) => {
+    const id = await opts.lab.create(request.body);
+    await admin.audit("lab_create", null, { slug: request.body.slug }, request.clientIp);
+    return { id };
+  });
+  r.post("/v1/admin/lab/:id", { schema: { params: labParams, body: labInput } }, async (request) => {
+    await opts.lab.update(request.params.id, request.body);
+    await admin.audit("lab_update", null, { slug: request.body.slug, flagChanged: Boolean(request.body.flag) }, request.clientIp);
+    return { ok: true };
+  });
+  r.post("/v1/admin/lab/:id/delete", { schema: { params: labParams } }, async (request) => {
+    await opts.lab.remove(request.params.id);
+    await admin.audit("lab_delete", null, { id: request.params.id }, request.clientIp);
+    return { ok: true };
+  });
 }

@@ -34,6 +34,12 @@ const GAMES = {
   crossing: dynamic(() => import("@/components/games/ladder/CrossingGame").then((m) => m.CrossingGame), {
     loading: () => <GameLoading game="crossing" />,
   }),
+  penalty: dynamic(() => import("@/components/games/ladder/PenaltyGame").then((m) => m.PenaltyGame), {
+    loading: () => <GameLoading game="penalty" />,
+  }),
+  hilo: dynamic(() => import("@/components/games/ladder/HiloGame").then((m) => m.HiloGame), {
+    loading: () => <GameLoading game="hilo" />,
+  }),
 } satisfies Record<GameId, React.ComponentType>;
 
 export function GameMount({ game }: { game: GameId }) {

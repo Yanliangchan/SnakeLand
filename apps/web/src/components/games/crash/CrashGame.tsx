@@ -1,6 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
+import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   CRASH_LIMITS,
@@ -10,6 +11,7 @@ import {
   type CrashMyBetDTO,
   type CrashRoundDTO,
   type CrashSettlementDTO,
+  CRASH_ROOM,
 } from "@snakeland/shared";
 import { GameShell, PanelSection } from "@/components/GameShell";
 import { Button, Toggle, WinCelebration } from "@/components/ui";
@@ -23,6 +25,9 @@ import { useSettings } from "@/providers/settings";
 import { ChipTray, StakeSummary, useChipSlip } from "../shared/ChipSlip";
 import { FairnessDialog, FairRow, VerifiedBadge } from "../shared/FairnessDialog";
 import { CrashStage, liveMultiplier } from "./CrashStage";
+
+// Chat is secondary: load it after the game itself.
+const LiveChat = dynamic(() => import("../shared/LiveChat").then((m) => m.LiveChat), { ssr: false });
 
 const AUTO_PRESETS = [1.5, 2, 3, 5, 10];
 
@@ -66,7 +71,7 @@ function LivePayout({ round, amount, offsetMs }: { round: CrashRoundDTO; amount:
 
 export function CrashGame() {
   const { me, setWallet } = useSession();
-  const { play, haptic } = useSettings();
+  const { play } = useSettings();
   const balance = me?.wallet.balance ?? 0;
   const slip = useChipSlip(Math.min(CRASH_LIMITS.maxBet, balance));
   const [autoOn, setAutoOn] = useState(false);
@@ -85,15 +90,15 @@ export function CrashGame() {
       setWallet({ balance: s.balance });
       recordRound("crash", s.staked, s.payout);
       setMyBet((b) => (b && b.roundId === s.roundId ? { ...b, payout: s.payout, cashoutX100: s.cashoutX100 } : b));
-      if (s.payout === 0) haptic("lose");
+      if (s.payout === 0) play("lose");
     },
-    [setWallet, haptic],
+    [setWallet, play],
   );
   const onAutoCashout = useCallback(
     (bet: CrashMyBetDTO, bal: number) => {
       setMyBet(bet);
       setWallet({ balance: bal });
-      play("chime");
+      play("coin");
     },
     [setWallet, play],
   );
@@ -187,7 +192,7 @@ export function CrashGame() {
         const res = await crashApi.cashout(round.id);
         setMyBet(res.myBet);
         setWallet({ balance: res.balance });
-        play("chime");
+        play("coin");
       });
       return;
     }
@@ -247,6 +252,7 @@ export function CrashGame() {
       <GameShell
         game="crash"
         title="Crash"
+        headerExtra={<LiveChat room={CRASH_ROOM} />}
         tableId="crash"
         controls={
           <div className="flex flex-col gap-4">

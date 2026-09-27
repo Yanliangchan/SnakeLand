@@ -43,6 +43,20 @@ const EnvSchema = z.object({
    * scrypt hash of the /admin password (`pnpm --filter @snakeland/api admin:hash`).
    * Unset disables the admin console.
    */
+  /** Web push (VAPID) keys: `npx web-push generate-vapid-keys`. Unset disables notifications. */
+  VAPID_PUBLIC_KEY: z
+    .string()
+    .regex(/^[A-Za-z0-9_-]{80,100}$/)
+    .optional(),
+  VAPID_PRIVATE_KEY: z
+    .string()
+    .regex(/^[A-Za-z0-9_-]{40,50}$/)
+    .optional(),
+  /** Contact for push services, e.g. mailto:you@example.com */
+  VAPID_SUBJECT: z
+    .string()
+    .regex(/^(mailto:|https:\/\/)/)
+    .optional(),
   ADMIN_PASSWORD_HASH: z
     .string()
     .regex(/^scrypt\$[A-Za-z0-9+/=]+\$[A-Za-z0-9+/=]+$/, "ADMIN_PASSWORD_HASH must come from the admin:hash script")

@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
-import { CARRIER_MODES, INSTANT_BET_LIMITS, type LadderGame } from "@snakeland/shared";
+import { CARRIER_MODES, INSTANT_BET_LIMITS, LADDER_GAMES } from "@snakeland/shared";
 import type { Auth } from "../../auth";
 import type { CarrierService } from "../../games/arcade/carrier";
 import type { LadderService } from "../../games/arcade/ladder";
@@ -28,8 +28,8 @@ export async function arcadeRoutes(app: FastifyInstance, opts: { auth: Auth; car
     async (request) => opts.carrier.fly(request.user!.id, request.body),
   );
 
-  // ------------------------------------------------------------ Tower & Crossing
-  for (const game of ["tower", "crossing"] as LadderGame[]) {
+  // ------------------------------------------------------------ Tower, Crossing, Penalty, Hi-Lo
+  for (const game of LADDER_GAMES) {
     r.post(`/v1/${game}/state`, async (request) => opts.ladder.state(request.user!.id, game));
     r.post(
       `/v1/${game}/rounds`,
@@ -40,7 +40,14 @@ export async function arcadeRoutes(app: FastifyInstance, opts: { auth: Auth; car
       `/v1/${game}/rounds/:roundId/step`,
       {
         config: { rateLimit: { max: 240, timeWindow: "1 minute" } },
-        schema: { params: roundParams, body: z.object({ version, door: z.number().int().min(0).max(8).optional() }) },
+        schema: {
+          params: roundParams,
+          body: z.object({
+            version,
+            door: z.number().int().min(0).max(8).optional(),
+            choice: z.enum(["higher", "lower", "skip"]).optional(),
+          }),
+        },
       },
       async (request) => opts.ladder.step(request.user!.id, game, request.params.roundId, request.body),
     );

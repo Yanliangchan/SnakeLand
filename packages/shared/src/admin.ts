@@ -31,6 +31,8 @@ export interface AdminAuditDTO {
 export interface AdminPlayerDetailDTO {
   profile: ProfileDTO;
   suspendedAt: string | null;
+  /** Muted players can read live chat but not post. */
+  chatMutedAt: string | null;
   activeSessions: number;
   lastSeenAt: string | null;
   transactions: TransactionDTO[];

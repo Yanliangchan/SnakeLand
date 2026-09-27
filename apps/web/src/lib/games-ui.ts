@@ -11,6 +11,8 @@ export const GAME_ACCENT: Record<GameId, string> = {
   carrier: "#fb923c",
   tower: "#e879f9",
   crossing: "#facc15",
+  penalty: "#4ade80",
+  hilo: "#f472b6",
 };
 
 export interface GameHelp {
@@ -121,6 +123,31 @@ export const GAME_HELP: Record<GameId, GameHelp> = {
     shortcuts: [
       ["Space", "Bet / hop a lane"],
       ["C", "Cash out"],
+    ],
+  },
+  penalty: {
+    steps: [
+      "Choose how much goal the keeper covers. Less open goal, bigger multipliers.",
+      "Pick a spot for each kick. Beat the keeper and the multiplier climbs.",
+      "Cash out any time, or score all ten for the full multiplier.",
+    ],
+    shortcuts: [
+      ["Enter", "Bet / cash out"],
+      ["1–5", "Shoot at a spot"],
+      ["R", "Random spot"],
+    ],
+  },
+  hilo: {
+    steps: [
+      "Bet to draw a card. Guess if the next is higher or lower. Ties win.",
+      "Riskier guesses pay more; each guess shows its odds and payout.",
+      "Skip cards you don't like. Cash out any time after a correct guess.",
+    ],
+    shortcuts: [
+      ["Enter", "Bet / cash out"],
+      ["H / ↑", "Higher or same"],
+      ["L / ↓", "Lower or same"],
+      ["S", "Skip"],
     ],
   },
 };

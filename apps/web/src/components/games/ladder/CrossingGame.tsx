@@ -21,6 +21,7 @@ import { ChipTray, StakeSummary } from "../shared/ChipSlip";
 import { InstantFairness } from "../shared/InstantFairness";
 import { OptionPills } from "../shared/OptionPills";
 import { RecentMultipliers } from "../shared/RecentMultipliers";
+import { AutoPanel } from "./AutoPanel";
 import { useLadderGame } from "./useLadderGame";
 
 const MODE_LABEL: Record<CrossingMode, string> = { easy: "Easy", medium: "Medium", hard: "Hard", daredevil: "Daredevil" };
@@ -144,6 +145,7 @@ export function CrossingGame() {
                 </Button>
               </div>
             </div>
+            <AutoPanel g={g} mode={mode} maxSteps={CROSSING_CONFIG[mode].lanes} stepLabel="lanes" pick={() => undefined} />
           </div>
         }
       >

@@ -39,3 +39,16 @@ export interface ApiErrorDTO {
     message: string;
   };
 }
+
+// ---------------------------------------------------------------- Push notifications
+
+export interface PushConfigDTO {
+  enabled: boolean;
+  /** VAPID application server key (base64url). */
+  publicKey: string | null;
+}
+
+export interface PushPrefsDTO {
+  daily: boolean;
+  titles: boolean;
+}

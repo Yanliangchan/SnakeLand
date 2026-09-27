@@ -8,8 +8,10 @@ import { Segmented } from "@/components/Segmented";
 import { Avatar, Button, ButtonLink, Card, Toggle } from "@/components/ui";
 import { api } from "@/lib/api";
 import { fadeUp } from "@/lib/motion";
+import { disablePush, pushSupported } from "@/lib/push";
 import { useSession } from "@/providers/session";
 import { useSettings } from "@/providers/settings";
+import { NotificationsCard } from "./NotificationsCard";
 
 export function SettingsView() {
   const router = useRouter();
@@ -39,19 +41,39 @@ export function SettingsView() {
           )}
         </Card>
 
-        <Card className="mt-3 flex items-center justify-between" transition={{ ...fadeUp.transition, delay: 0.05 }}>
-          <div>
-            <p className="text-[15px] font-medium">Sound</p>
-            <p className="mt-0.5 text-[13px] text-fg-muted">Soft clicks, card flips and a chime on wins.</p>
+        <Card className="mt-3" transition={{ ...fadeUp.transition, delay: 0.05 }}>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-[15px] font-medium">Sound</p>
+              <p className="mt-0.5 text-[13px] text-fg-muted">Chip clacks, card flips, cash-out coins and win fanfares.</p>
+            </div>
+            <Toggle
+              label="Sound"
+              checked={soundOn}
+              onChange={(on) => {
+                setSoundOn(on);
+                if (on) play("chip");
+              }}
+            />
           </div>
-          <Toggle
-            label="Sound"
-            checked={soundOn}
-            onChange={(on) => {
-              setSoundOn(on);
-              if (on) play("click");
-            }}
-          />
+          {soundOn && (
+            <div className="mt-4 flex items-center gap-3 border-t border-hairline pt-4">
+              <span className="text-[13px] text-fg-muted">Volume</span>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={5}
+                value={Math.round(prefs.volume * 100)}
+                onChange={(e) => setPrefs({ volume: Number(e.target.value) / 100 })}
+                onPointerUp={() => play("win")}
+                onKeyUp={() => play("chip")}
+                aria-label="Volume"
+                className="h-1 flex-1 cursor-pointer accent-[var(--color-fg)]"
+              />
+              <span className="w-9 text-right text-[13px] tabular">{Math.round(prefs.volume * 100)}%</span>
+            </div>
+          )}
         </Card>
 
         <Card className="mt-3 flex items-center justify-between" transition={{ ...fadeUp.transition, delay: 0.07 }}>
@@ -96,6 +118,8 @@ export function SettingsView() {
           </div>
         </Card>
 
+        <NotificationsCard isGuest={me.user.isGuest} />
+
         <motion.div {...fadeUp} transition={{ ...fadeUp.transition, delay: 0.12 }} className="mt-10">
           <Button
             variant="secondary"
@@ -104,6 +128,8 @@ export function SettingsView() {
               setSigningOut(true);
               // A guest leaving is gone for good: delete it rather than leave it behind.
               if (me.user.isGuest) await api("/v1/account/leave-guest", { method: "POST", body: {} }).catch(() => {});
+              // Stop this device's notifications along with the session.
+              else if (pushSupported()) await disablePush().catch(() => {});
               await signOut().catch(() => {});
               router.replace("/");
             }}

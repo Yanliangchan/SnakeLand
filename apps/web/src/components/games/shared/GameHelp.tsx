@@ -73,6 +73,10 @@ export function GameHelpSheet({ game, open, onClose }: { game: GameId; open: boo
           </li>
         ))}
         <li className="flex items-center justify-between gap-3 py-2 text-[13px]">
+          <span className="text-fg-muted">Switch game</span>
+          <Kbd>G</Kbd>
+        </li>
+        <li className="flex items-center justify-between gap-3 py-2 text-[13px]">
           <span className="text-fg-muted">This help</span>
           <Kbd>?</Kbd>
         </li>

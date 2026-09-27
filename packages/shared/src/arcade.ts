@@ -1,3 +1,4 @@
+import { RANKS, SUITS, type Card } from "./cards";
 import { fairFloats, fairShuffle } from "./fair";
 import type { Chips } from "./money";
 import type { FairRevealDTO } from "./instant";
@@ -132,7 +133,8 @@ export interface CarrierFlightResultDTO {
 
 // ---------------------------------------------------------------- Ladder games (Tower, Crossing)
 
-export type LadderGame = "tower" | "crossing";
+export type LadderGame = "tower" | "crossing" | "penalty" | "hilo";
+export const LADDER_GAMES: readonly LadderGame[] = ["tower", "crossing", "penalty", "hilo"];
 
 export const TOWER_MODES = ["easy", "medium", "hard", "expert"] as const;
 export type TowerMode = (typeof TOWER_MODES)[number];
@@ -155,15 +157,38 @@ export const CROSSING_CONFIG: Record<CrossingMode, { survive: [number, number]; 
   daredevil: { survive: [3, 5], lanes: 12 },
 };
 
-export type LadderMode = TowerMode | CrossingMode;
+export const PENALTY_MODES = ["easy", "medium", "hard"] as const;
+export type PenaltyMode = (typeof PENALTY_MODES)[number];
+/** Spots in the goal, and how many of them the keeper covers on each kick. */
+export const PENALTY_CONFIG: Record<PenaltyMode, { spots: number; covered: number }> = {
+  easy: { spots: 5, covered: 1 },
+  medium: { spots: 3, covered: 1 },
+  hard: { spots: 2, covered: 1 },
+};
+export const PENALTY_KICKS = 10;
+
+export const HILO_MODES = ["classic"] as const;
+export type HiloMode = (typeof HILO_MODES)[number];
+/** Cards you can play through in one round (skips included). */
+export const HILO_MAX_STEPS = 52;
+export const HILO_MAX_X100 = 1_000_000; // 10,000×
+export type HiloChoice = "higher" | "lower" | "skip";
+export const HILO_CHOICES: readonly HiloChoice[] = ["higher", "lower", "skip"];
+
+export type LadderMode = TowerMode | CrossingMode | PenaltyMode | HiloMode;
 
 export function isLadderMode(game: LadderGame, mode: unknown): mode is LadderMode {
-  return game === "tower" ? TOWER_MODES.includes(mode as TowerMode) : CROSSING_MODES.includes(mode as CrossingMode);
+  const list: readonly string[] =
+    game === "tower" ? TOWER_MODES : game === "crossing" ? CROSSING_MODES : game === "penalty" ? PENALTY_MODES : HILO_MODES;
+  return typeof mode === "string" && list.includes(mode);
 }
 
-/** Steps to the top: floors in Tower, lanes in Crossing. */
+/** Steps to the top: floors, lanes, kicks, or cards. */
 export function ladderLength(game: LadderGame, mode: LadderMode): number {
-  return game === "tower" ? TOWER_FLOORS : CROSSING_CONFIG[mode as CrossingMode].lanes;
+  if (game === "tower") return TOWER_FLOORS;
+  if (game === "crossing") return CROSSING_CONFIG[mode as CrossingMode].lanes;
+  if (game === "penalty") return PENALTY_KICKS;
+  return HILO_MAX_STEPS;
 }
 
 /** Survival odds of one step as [numerator, denominator]. */
@@ -172,6 +197,11 @@ function stepOdds(game: LadderGame, mode: LadderMode): [bigint, bigint] {
     const c = TOWER_CONFIG[mode as TowerMode];
     return [BigInt(c.safe), BigInt(c.doors)];
   }
+  if (game === "penalty") {
+    const c = PENALTY_CONFIG[mode as PenaltyMode];
+    return [BigInt(c.spots - c.covered), BigInt(c.spots)];
+  }
+  if (game === "hilo") throw new RangeError("Hi-Lo odds depend on the cards; use hiloMultiplierX100");
   const [n, d] = CROSSING_CONFIG[mode as CrossingMode].survive;
   return [BigInt(n), BigInt(d)];
 }
@@ -206,6 +236,68 @@ export function crossingHitLane(serverSeed: string, clientSeed: string, mode: Cr
   return i === -1 ? null : i;
 }
 
+/** Penalty: the spots the keeper covers on every kick, from the seeds. */
+export function penaltyKeeper(serverSeed: string, clientSeed: string, mode: PenaltyMode): number[][] {
+  const { spots, covered } = PENALTY_CONFIG[mode];
+  const per = spots - 1;
+  const floats = fairFloats(serverSeed, clientSeed, 0, PENALTY_KICKS * per);
+  const ids = Array.from({ length: spots }, (_, i) => i);
+  return Array.from({ length: PENALTY_KICKS }, (_, k) =>
+    fairShuffle(ids, floats.slice(k * per, k * per + per))
+      .slice(0, covered)
+      .sort((a, b) => a - b),
+  );
+}
+
+// ---------------------------------------------------------------- Hi-Lo
+
+/** Cards are 0–51: rank = card % 13 + 1 (A = 1 … K = 13), suit = floor(card / 13). */
+export const hiloRank = (card: number) => (card % 13) + 1;
+
+/** The standard card code for a Hi-Lo card number, for display. */
+export const hiloCardCode = (card: number): Card => `${RANKS[card % 13]!}${SUITS[Math.floor(card / 13)]!}`;
+
+/** The deck for a round: every card drawn independently (an endless shoe). */
+export function hiloCards(serverSeed: string, clientSeed: string): number[] {
+  return fairFloats(serverSeed, clientSeed, 0, HILO_MAX_STEPS + 1).map((f) => Math.floor(f * 52));
+}
+
+/** Ranks out of 13 that win a guess from `card`: "higher or same" or "lower or same". */
+export function hiloWinningRanks(card: number, choice: "higher" | "lower"): number {
+  const r = hiloRank(card);
+  return choice === "higher" ? 14 - r : r;
+}
+
+export function hiloWins(from: number, next: number, choice: "higher" | "lower"): boolean {
+  return choice === "higher" ? hiloRank(next) >= hiloRank(from) : hiloRank(next) <= hiloRank(from);
+}
+
+/**
+ * Multiplier after a run of guesses: floor(97 × Π 13 / k), where k is the
+ * number of winning ranks for each guess. Skips don't change it.
+ */
+export function hiloMultiplierX100(cards: number[], picks: HiloChoice[]): number {
+  let num = BigInt(ARCADE_RTP_PERCENT);
+  let den = 1n;
+  picks.forEach((p, i) => {
+    if (p === "skip") return;
+    num *= 13n;
+    den *= BigInt(hiloWinningRanks(cards[i]!, p));
+  });
+  const x = Number(num / den);
+  return Math.min(HILO_MAX_X100, x);
+}
+
+/** What each guess from `card` would pay next, given the multiplier so far; null when it can't raise it. */
+export function hiloNextX100(cards: number[], picks: HiloChoice[], card: number): { higher: number | null; lower: number | null } {
+  const now = hiloMultiplierX100(cards, picks);
+  const after = (c: "higher" | "lower") => {
+    const x = hiloMultiplierX100([...cards.slice(0, picks.length), card], [...picks, c]);
+    return x > now ? x : null;
+  };
+  return { higher: after("higher"), lower: after("lower") };
+}
+
 export type LadderStatus = "playing" | "cashed_out" | "bust";
 
 export interface LadderRoundDTO {
@@ -217,7 +309,7 @@ export interface LadderRoundDTO {
   bet: Chips;
   /** Safe steps taken so far. */
   level: number;
-  /** Tower: the door picked on each floor (including the fatal one). Crossing: empty. */
+  /** Tower/Penalty: the door or spot picked each step. Hi-Lo: 0 higher, 1 lower, 2 skip. Crossing: empty. */
   picks: number[];
   multiplierX100: number;
   nextMultiplierX100: number | null;
@@ -226,6 +318,12 @@ export interface LadderRoundDTO {
   /** Revealed when the round ends. */
   towerLayout: number[][] | null;
   crossingHitLane: number | null;
+  /** Penalty: where the keeper covered on each kick taken so far (all kicks once over). */
+  penaltyKeeper: number[][] | null;
+  /** Hi-Lo: the cards seen so far, current card last (plus the losing card once over). */
+  hiloCards: number[] | null;
+  /** Hi-Lo: what "higher or same" / "lower or same" would pay on the current card. */
+  hiloNext: { higher: number | null; lower: number | null } | null;
   reveal: FairRevealDTO | null;
 }
 

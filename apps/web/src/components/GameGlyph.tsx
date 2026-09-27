@@ -17,8 +17,8 @@ export function GameGlyph({ game, size = 28 }: { game: GameId; size?: number }) 
     case "blackjack":
       return (
         <svg {...common}>
-          <rect x="4" y="6" width="12" height="17" rx="2" transform="rotate(-8 10 14)" />
-          <rect x="12" y="5" width="12" height="17" rx="2" transform="rotate(8 18 13)" />
+          <rect fill="currentColor" fillOpacity={0.18} x="4" y="6" width="12" height="17" rx="2" transform="rotate(-8 10 14)" />
+          <rect fill="currentColor" fillOpacity={0.18} x="12" y="5" width="12" height="17" rx="2" transform="rotate(8 18 13)" />
         </svg>
       );
     case "mines":
@@ -29,7 +29,7 @@ export function GameGlyph({ game, size = 28 }: { game: GameId; size?: number }) 
               x === 11 && y === 11 ? (
                 <circle key={`${x}${y}`} cx="14" cy="14" r="2.5" fill="currentColor" />
               ) : (
-                <rect key={`${x}${y}`} x={x} y={y} width="6" height="6" rx="1.5" />
+                <rect fill="currentColor" fillOpacity={0.18} key={`${x}${y}`} x={x} y={y} width="6" height="6" rx="1.5" />
               ),
             ),
           )}
@@ -48,22 +48,22 @@ export function GameGlyph({ game, size = 28 }: { game: GameId; size?: number }) 
           ].map(([x, y]) => (
             <circle key={`${x}-${y}`} cx={x} cy={y} r="1.2" fill="currentColor" stroke="none" />
           ))}
-          <circle cx="12" cy="23" r="2.5" />
+          <circle fill="currentColor" fillOpacity={0.18} cx="12" cy="23" r="2.5" />
         </svg>
       );
     case "baccarat":
       return (
         <svg {...common}>
-          <rect x="3" y="7" width="9" height="14" rx="2" />
-          <rect x="16" y="7" width="9" height="14" rx="2" />
+          <rect fill="currentColor" fillOpacity={0.18} x="3" y="7" width="9" height="14" rx="2" />
+          <rect fill="currentColor" fillOpacity={0.18} x="16" y="7" width="9" height="14" rx="2" />
           <path d="M14 11v6" />
         </svg>
       );
     case "roulette":
       return (
         <svg {...common}>
-          <circle cx="14" cy="14" r="10" />
-          <circle cx="14" cy="14" r="5" />
+          <circle fill="currentColor" fillOpacity={0.18} cx="14" cy="14" r="10" />
+          <circle fill="currentColor" fillOpacity={0.18} cx="14" cy="14" r="5" />
           <path d="M14 4v5M14 19v5M4 14h5M19 14h5" />
         </svg>
       );
@@ -71,6 +71,7 @@ export function GameGlyph({ game, size = 28 }: { game: GameId; size?: number }) 
       return (
         <svg {...common}>
           <path d="M4 23h20" strokeOpacity="0.4" />
+          <path d="M4 22c7 0 12-3 17-15V23H4z" fill="currentColor" fillOpacity={0.12} stroke="none" />
           <path d="M4 22c7 0 12-3 17-15" />
           <circle cx="21" cy="7" r="1.8" fill="currentColor" />
         </svg>
@@ -78,14 +79,14 @@ export function GameGlyph({ game, size = 28 }: { game: GameId; size?: number }) 
     case "carrier":
       return (
         <svg {...common}>
-          <path d="M3 21h16l-2 3H6z" />
-          <path d="M9 13l4-1 7-5c1.2-.8 2.6.6 1.8 1.8l-5 7-1 4-2-3-3-2z" />
+          <path d="M3 21h16l-2 3H6z" fill="currentColor" fillOpacity={0.3} />
+          <path d="M9 13l4-1 7-5c1.2-.8 2.6.6 1.8 1.8l-5 7-1 4-2-3-3-2z" fill="currentColor" fillOpacity={0.18} />
         </svg>
       );
     case "tower":
       return (
         <svg {...common}>
-          <rect x="6" y="4" width="16" height="20" rx="1.5" />
+          <rect fill="currentColor" fillOpacity={0.18} x="6" y="4" width="16" height="20" rx="1.5" />
           <path d="M6 10.5h16M6 17h16" />
           <rect x="12" y="19" width="4" height="5" fill="currentColor" stroke="none" />
         </svg>
@@ -95,6 +96,22 @@ export function GameGlyph({ game, size = 28 }: { game: GameId; size?: number }) 
         <svg {...common}>
           <path d="M4 4v20M24 4v20" />
           <path d="M11 5v3M11 12v3M11 19v3M17 5v3M17 12v3M17 19v3" strokeOpacity="0.5" />
+        </svg>
+      );
+    case "penalty":
+      return (
+        <svg {...common}>
+          <path d="M3 19V6h22v13" />
+          <path d="M3 10h22M8 6v13M14 6v13M20 6v13" strokeOpacity="0.35" />
+          <circle cx="14" cy="22.5" r="2.5" fill="currentColor" stroke="none" />
+        </svg>
+      );
+    case "hilo":
+      return (
+        <svg {...common}>
+          <rect fill="currentColor" fillOpacity={0.18} x="7" y="5" width="12" height="18" rx="2" />
+          <path d="M22 9l2.5-3L27 9M22 19l2.5 3L27 19" />
+          <path d="M11 12l2-3 2 3M11 16l2 3 2-3" strokeOpacity="0.6" />
         </svg>
       );
   }

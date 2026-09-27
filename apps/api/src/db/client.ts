@@ -11,7 +11,8 @@ export function createDb(databaseUrl: string) {
     connectionString: databaseUrl,
     // Small pool: the API is one modest instance, and Postgres memory scales with connections.
     max: 5,
-    idleTimeoutMillis: 30_000,
+    // Hand idle connections back quickly: most of the time the API is quiet.
+    idleTimeoutMillis: 10_000,
     connectionTimeoutMillis: 5_000,
     // Guard against runaway queries holding row locks on wallets.
     statement_timeout: 10_000,

@@ -1,5 +1,7 @@
 import type {
   AdminBalanceMode,
+  AdminLabChallengeDTO,
+  AdminLabChallengeInput,
   AdminPlayerDetailDTO,
   AdminPlayerPageDTO,
   AdminStatsDTO,
@@ -30,4 +32,10 @@ export const adminApi = {
   signOut: (id: string) => api<{ sessions: number }>(`${p(id)}/sign-out`, { method: "POST", body: {} }),
   /** Permanent. The server requires the id repeated as confirmation. */
   deletePlayer: (id: string) => api(`${p(id)}/delete`, { method: "POST", body: { confirmId: id } }),
+  chatMute: (id: string, muted: boolean) => api(`${p(id)}/chat-mute`, { method: "POST", body: { muted } }),
+  lab: () => api<{ challenges: AdminLabChallengeDTO[] }>("/v1/admin/lab"),
+  labCreate: (body: AdminLabChallengeInput) => api<{ id: string }>("/v1/admin/lab", { method: "POST", body }),
+  labUpdate: (id: string, body: AdminLabChallengeInput) =>
+    api(`/v1/admin/lab/${encodeURIComponent(id)}`, { method: "POST", body }),
+  labDelete: (id: string) => api(`/v1/admin/lab/${encodeURIComponent(id)}/delete`, { method: "POST", body: {} }),
 };

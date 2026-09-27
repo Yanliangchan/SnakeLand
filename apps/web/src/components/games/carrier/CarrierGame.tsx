@@ -109,7 +109,7 @@ function Carrier({ show }: { show: boolean }) {
 
 export function CarrierGame() {
   const { me, setWallet } = useSession();
-  const { play, haptic, speed, reducedMotion } = useSettings();
+  const { play, speed, reducedMotion } = useSettings();
   const clientSeed = useClientSeed();
   const balance = me?.wallet.balance ?? 0;
   const slip = useChipSlip(Math.min(INSTANT_BET_LIMITS.max, balance));
@@ -154,7 +154,7 @@ export function CarrierGame() {
       setFlight(res.flight);
       setShown(0);
       setPhase("flying");
-      play("click");
+      play("whoosh");
       timers.current.forEach(clearTimeout);
       timers.current.length = 0;
       const n = res.flight.events.length;
@@ -176,8 +176,8 @@ export function CarrierGame() {
             recordRound("carrier", res.flight.bet, res.flight.payout);
             setRecent((r) => [{ id: res.flight.id, x100: res.flight.multiplierX100 }, ...r].slice(0, 12));
             setLast({ flight: res.flight, clientSeed: seed });
-            if (res.flight.landed) play("chime");
-            else haptic("lose");
+            if (res.flight.landed) play("coin");
+            else play("lose");
             busy.current = false;
           },
           n * stepMs + 150 + Math.round(2000 * speed),
@@ -187,7 +187,7 @@ export function CarrierGame() {
       setError(message(e));
       busy.current = false;
     }
-  }, [phase, slip.amount, mode, clientSeed, setWallet, play, haptic, stepMs, speed]);
+  }, [phase, slip.amount, mode, clientSeed, setWallet, play, stepMs, speed]);
 
   // Space / Enter take off; 1–4 pick a speed.
   const keys = useRef<(e: KeyboardEvent) => void>(() => {});

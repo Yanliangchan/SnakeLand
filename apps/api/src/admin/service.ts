@@ -165,6 +165,7 @@ export class AdminService {
     return {
       profile,
       suspendedAt: u.suspendedAt?.toISOString() ?? null,
+      chatMutedAt: u.chatMutedAt?.toISOString() ?? null,
       activeSessions: sess[0]?.active ?? 0,
       lastSeenAt: sess[0]?.last ? new Date(sess[0].last).toISOString() : null,
       transactions: txs.items,
@@ -199,6 +200,15 @@ export class AdminService {
       if (suspended) await tx.delete(sessions).where(eq(sessions.userId, userId));
     });
     this.progress.invalidate();
+  }
+
+  async setChatMuted(userId: string, muted: boolean) {
+    const [row] = await this.db
+      .update(users)
+      .set({ chatMutedAt: muted ? this.clock() : null })
+      .where(eq(users.id, userId))
+      .returning({ id: users.id });
+    if (!row) await this.user(userId);
   }
 
   async signOutEverywhere(userId: string): Promise<number> {

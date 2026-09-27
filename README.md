@@ -1,10 +1,11 @@
 # snakeland
 
 A casino-style web app with **virtual chips only**. There's no real money anywhere, and every outcome is provably fair.
-It has nine games in one lobby: Blackjack, Mines, Plinko, Baccarat, Roulette, Crash, Carrier, Tower and Crossing.
+It has eleven games in one lobby: Blackjack, Mines, Plinko, Baccarat, Roulette, Crash, Carrier, Tower, Crossing,
+Penalty and Hi-Lo, plus **The Lab**, a set of capture-the-flag puzzles that pay chips.
 
-> Status: **step 4 of 5**. Auth, wallet, lobby, the design system, **Blackjack**, **Mines**, **Plinko**, **Baccarat**
-> and live **Roulette** are live. Crash comes next.
+> Status: live at snakeland.yanliangchan.com. All eleven games, The Lab, live chat, push notifications,
+> leaderboards and the admin console are running.
 
 ## Stack
 
@@ -158,7 +159,7 @@ Mines has a **3% house edge** and Plinko **1%**. Bets are 10–10,000, and multi
 - **The snake**: the graph is a snake slithering up the curve on a single canvas; cash-outs show as flags on its
   body, and at the crash it bites (turns red and shakes). It only animates while something is moving.
 
-## Carrier, Tower and Crossing
+## Carrier, Tower, Crossing, Penalty and Hi-Lo
 
 Instant single-player games with a 97% return, on the same per-round seed commit–reveal as Mines and Plinko
 (the Fair panel re-checks each outcome).
@@ -172,6 +173,40 @@ Instant single-player games with a 97% return, on the same per-round seed commit
   Daredevil 40%/12).
 - Tower and Crossing pay `floor(97 ÷ P(surviving every step so far))`, can be cashed out after any step, cash
   out automatically at the top, and resume after a refresh. The whole layout is fixed by the seeds at the start.
+- **Penalty**: ten kicks; pick a spot and beat the keeper (Easy 5 spots, Medium 3, Hard 2; the keeper covers one).
+  Pays like Tower. Where the keeper dived is shown for kicks already taken; later dives stay secret.
+- **Hi-Lo**: guess whether the next card is higher-or-same or lower-or-same, or skip it. Each correct guess
+  multiplies by 13 ÷ (winning ranks), with 97% applied once: `floor(97 × Π 13/k)`, capped at 10,000×. A guess
+  that can't raise the multiplier (higher on an ace) is refused. Up to 52 cards per round.
+- **Auto**: Tower, Crossing, Penalty and Hi-Lo can auto-play a number of rounds, cashing out after a set number
+  of steps, with optional stop-on-profit and stop-on-loss.
+
+## The Lab
+
+`/lab` is a set of capture-the-flag puzzles (crypto, web, forensics, casino). Guests can browse; registered players
+download files and submit flags. Each challenge pays its chip reward once per player (Easy 1,000, Medium 3,000,
+Hard 7,500, Insane 15,000) as a `lab_reward` ledger row. Lab chips don't count towards leaderboard profit.
+
+- Starter challenges use **per-player flags** derived from `HMAC(secret, user, challenge)`, so answers can't be
+  shared; nothing about them is stored. Admin-made challenges can also use one static flag, stored only as a hash.
+- A test solves every starter challenge from what a player can see, so each one is known to be solvable.
+- Flag submissions are limited to 10 a minute; the "vulnerable" web challenges only ever reveal the caller's own
+  flag.
+- `/admin/lab` creates, edits, publishes and removes challenges (solved ones can only be unpublished).
+
+## Live chat
+
+Roulette and Crash have room chat, delivered over the game's socket. The last 50 messages per room live in Redis
+and expire after a day of silence (nothing is written to Postgres). Guests can read; registered players can post
+(at most 5 messages per 15 seconds, one per 1.2 s). Links are removed, control and bidi characters are stripped,
+and common abuse is masked. Admins can mute a player from their admin page.
+
+## Push notifications
+
+Players can turn on notifications per device in Settings: daily chips ready, and weekly title won or lost (at most
+once every 3 hours). The maintenance job sends them. Subscriptions are only accepted for the browsers' own push
+services, and dead ones are removed automatically. Set `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` and
+`VAPID_SUBJECT` on the API (`npx web-push generate-vapid-keys`); without them the feature is off.
 
 ## Live games only run while someone is playing
 
@@ -210,7 +245,8 @@ A background job runs every 10 minutes on one instance (Redis lease):
   Money records (the ledger) stay, so balances always reconcile.
 - Expired sessions/verifications, rate-limit rows older than a day, and admin audit rows older than 90 days.
 
-Resource use: the Postgres pool is 5 connections and per-request logging is off in production (see also "Live
+Resource use: the Postgres pool is 5 connections that close after 10 idle seconds, per-request logging is off in
+production, and the push library and chat panel only load when first needed (see also "Live
 games only run while someone is playing").
 
 ## Player experience
@@ -219,7 +255,9 @@ games only run while someone is playing").
   play plus every keyboard shortcut.
 - **Session stats**: each game shows this tab's rounds, wagered, net and best multiplier.
 - **Mines**: after a bust you see what cashing out one pick earlier would have paid, and can replay the round.
-- **Settings**: sound, haptics (vibration on supported phones), motion (system / reduced / full) and fast mode.
+- **Settings**: sound (with volume), haptics (vibration on supported phones), motion (system / reduced / full),
+  fast mode and notifications. Sounds are synthesized in the browser, so there are no audio files to download.
+- **Game switcher**: tap a game's title (or press `G`) to jump to any other game.
 - **Profiles**: tap any leaderboard name for that player's public card (no balance or email).
 - **Installable**: a web app manifest and icons, so "Add to Home Screen" opens it full screen.
 - Offline banner, retry cards for failed loads, and an error page that never shows a blank screen.
@@ -292,6 +330,9 @@ API_URL=https://<web domain>          # auth is served through the web origin
 WEB_ORIGINS=https://<web domain>
 CLIENT_IP_HEADER=x-real-ip            # Railway's edge sets it; used for rate limits
 ADMIN_PASSWORD_HASH=<output of pnpm --filter @snakeland/api admin:hash>   # enables /admin
+VAPID_PUBLIC_KEY=<npx web-push generate-vapid-keys>   # enables push notifications
+VAPID_PRIVATE_KEY=<...>
+VAPID_SUBJECT=mailto:<you>
 ```
 
 **Web variables** (`NEXT_PUBLIC_*` is read at build time)

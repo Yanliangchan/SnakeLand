@@ -1,7 +1,8 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { Wordmark } from "@/components/AppHeader";
 import { FullScreenLoader } from "@/components/FullScreenLoader";
@@ -69,6 +70,7 @@ function Login({ onDone }: { onDone: () => void }) {
 
 export function AdminFrame({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [state, setState] = useState<State>("checking");
 
   const check = useCallback(() => {
@@ -96,6 +98,20 @@ export function AdminFrame({ children }: { children: React.ReactNode }) {
             <div className="flex items-center gap-3">
               <Wordmark />
               <span className="rounded-full px-2 py-0.5 text-[11px] font-medium text-fg-muted hairline">Admin</span>
+              <nav className="ml-2 flex gap-1 text-[13px]">
+                {[
+                  { href: "/admin", label: "Players", active: !pathname.startsWith("/admin/lab") },
+                  { href: "/admin/lab", label: "Lab", active: pathname.startsWith("/admin/lab") },
+                ].map((l) => (
+                  <Link
+                    key={l.href}
+                    href={l.href}
+                    className={l.active ? "rounded-full bg-elevated px-3 py-1 font-medium" : "rounded-full px-3 py-1 text-fg-muted hover:text-fg"}
+                  >
+                    {l.label}
+                  </Link>
+                ))}
+              </nav>
             </div>
             <Button
               variant="ghost"

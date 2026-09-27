@@ -25,7 +25,7 @@ export function WinCelebration({
 
   useEffect(() => {
     if (trigger === null) return;
-    if (multiplier > 1) play("chime");
+    if (multiplier > 1) play(multiplier >= 10 ? "bigwin" : "win");
     if (multiplier > CELEBRATE_ABOVE_MULTIPLIER) void controls.start(celebrate.animate, celebrate.transition);
     // Only fire when a new result arrives.
     // eslint-disable-next-line react-hooks/exhaustive-deps

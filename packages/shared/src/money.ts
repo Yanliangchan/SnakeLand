@@ -25,6 +25,7 @@ export const TRANSACTION_TYPES = [
   "refund",
   "guest_merge",
   "admin_adjust",
+  "lab_reward",
 ] as const;
 export type TransactionType = (typeof TRANSACTION_TYPES)[number];
 

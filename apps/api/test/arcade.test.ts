@@ -4,7 +4,11 @@ import {
   applyX100,
   carrierFlight,
   crossingHitLane,
+  hiloCards,
+  hiloNextX100,
+  hiloWins,
   ladderMultiplierX100,
+  penaltyKeeper,
   towerLayout,
   verifyCommit,
 } from "@snakeland/shared";
@@ -92,5 +96,76 @@ describe("Crossing", () => {
     if (hit === null) expect(r).toMatchObject({ status: "cashed_out", level: lanes });
     else expect(r).toMatchObject({ status: "bust", level: hit, crossingHitLane: hit });
     await reconciled(u);
+  });
+});
+
+const serverSeed = async (id: string) =>
+  (await db.execute<{ server_seed: string }>(`select server_seed from ladder_rounds where id = '${id}'`)).rows[0]!.server_seed;
+
+describe("Penalty", () => {
+  it("scores past the keeper, hides future dives, and busts on a save", async () => {
+    const u = await createUser(db);
+    let { round } = await ladder.start(u, "penalty", { bet: 100, mode: "medium", clientSeed: "pk" });
+    const keeper = penaltyKeeper(await serverSeed(round.id), "pk", "medium");
+    expect(round.penaltyKeeper).toEqual([]);
+    const open = (k: number) => [0, 1, 2].find((s) => !keeper[k]!.includes(s))!;
+    ({ round } = await ladder.step(u, "penalty", round.id, { version: round.version, door: open(0) }));
+    expect(round.level).toBe(1);
+    expect(round.penaltyKeeper).toEqual([keeper[0]]);
+    expect(round.multiplierX100).toBe(ladderMultiplierX100("penalty", "medium", 1));
+    await expect(ladder.step(u, "penalty", round.id, { version: round.version, door: 3 })).rejects.toMatchObject({ code: "INVALID_SPOT" });
+    ({ round } = await ladder.step(u, "penalty", round.id, { version: round.version, door: keeper[1]![0]! }));
+    expect(round.status).toBe("bust");
+    expect(round.penaltyKeeper).toHaveLength(10);
+    await reconciled(u);
+  });
+});
+
+describe("Hi-Lo", () => {
+  it("follows the seeded cards, refuses no-gain guesses, and pays on cash out", async () => {
+    const u = await createUser(db);
+    let { round } = await ladder.start(u, "hilo", { bet: 100, mode: "classic", clientSeed: "hl" });
+    const cards = hiloCards(await serverSeed(round.id), "hl");
+    expect(round.hiloCards).toEqual([cards[0]]);
+    expect(round.hiloNext).toEqual(hiloNextX100(cards, [], cards[0]!));
+    await expect(ladder.cashOut(u, "hilo", round.id, { version: round.version })).rejects.toMatchObject({ code: "NOTHING_TO_CASH_OUT" });
+
+    // Always guess the side that can gain; stop at the first win or loss.
+    for (let i = 0; i < 52 && round.status === "playing" && round.level === 0; i++) {
+      const next = round.hiloNext!;
+      const choice = next.higher !== null && (next.lower === null || next.higher <= next.lower) ? "higher" : "lower";
+      const won = hiloWins(cards[i]!, cards[i + 1]!, choice);
+      ({ round } = await ladder.step(u, "hilo", round.id, { version: round.version, choice }));
+      expect(round.status).toBe(won ? "playing" : "bust");
+      expect(round.hiloCards).toEqual(cards.slice(0, i + 2));
+    }
+    if (round.status === "playing") {
+      const x = round.multiplierX100;
+      ({ round } = await ladder.step(u, "hilo", round.id, { version: round.version, choice: "skip" }));
+      expect(round.multiplierX100).toBe(x);
+      const { round: done, balance } = await ladder.cashOut(u, "hilo", round.id, { version: round.version });
+      expect(done.payout).toBe(applyX100(100, x));
+      expect(balance).toBeGreaterThan(0);
+    }
+    await reconciled(u);
+  });
+
+  it("rejects a guess that can't win anything", async () => {
+    const u = await createUser(db);
+    // Find a seed whose first card is an ace or a king.
+    for (let i = 0; i < 200; i++) {
+      const { round } = await ladder.start(u, "hilo", { bet: 10, mode: "classic", clientSeed: `edge${i}` });
+      const rank = (round.hiloCards![0]! % 13) + 1;
+      if (rank === 1 || rank === 13) {
+        const bad = rank === 1 ? "higher" : "lower";
+        expect(round.hiloNext![bad]).toBeNull();
+        await expect(ladder.step(u, "hilo", round.id, { version: round.version, choice: bad })).rejects.toMatchObject({ code: "NO_GAIN" });
+        return;
+      }
+      await ladder.step(u, "hilo", round.id, { version: round.version, choice: "skip" });
+      // Skipping doesn't end the round; bust it quickly by walking to a loss.
+      await db.execute(`update ladder_rounds set status = 'bust', payout = 0 where id = '${round.id}'`);
+    }
+    throw new Error("no ace or king in 200 seeds");
   });
 });

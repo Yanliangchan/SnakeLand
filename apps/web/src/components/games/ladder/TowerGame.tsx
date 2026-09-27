@@ -21,6 +21,7 @@ import { ChipTray, StakeSummary } from "../shared/ChipSlip";
 import { InstantFairness } from "../shared/InstantFairness";
 import { OptionPills } from "../shared/OptionPills";
 import { RecentMultipliers } from "../shared/RecentMultipliers";
+import { AutoPanel } from "./AutoPanel";
 import { useLadderGame } from "./useLadderGame";
 
 const MODE_LABEL: Record<TowerMode, string> = { easy: "Easy", medium: "Medium", hard: "Hard", expert: "Expert" };
@@ -156,6 +157,7 @@ export function TowerGame() {
                 </Button>
               </div>
             </div>
+            <AutoPanel g={g} mode={mode} maxSteps={TOWER_FLOORS} stepLabel="floors" pick={() => Math.floor(Math.random() * TOWER_CONFIG[mode].doors)} />
           </div>
         }
       >

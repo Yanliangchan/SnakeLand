@@ -1,19 +1,29 @@
 import { and, eq } from "drizzle-orm";
 import {
+  HILO_CHOICES,
+  HILO_MAX_STEPS,
   INSTANT_BET_LIMITS,
+  PENALTY_CONFIG,
   TOWER_CONFIG,
   applyX100,
   crossingHitLane,
+  hiloCards,
+  hiloMultiplierX100,
+  hiloNextX100,
+  hiloWins,
   isLadderMode,
   ladderLength,
   ladderMultiplierX100,
+  penaltyKeeper,
   towerLayout,
   type CrossingMode,
+  type HiloChoice,
   type LadderGame,
   type LadderMode,
   type LadderRoundDTO,
   type LadderStateDTO,
   type LadderUpdateDTO,
+  type PenaltyMode,
   type TowerMode,
 } from "@snakeland/shared";
 import type { Db, Tx } from "../../db/client";
@@ -24,12 +34,21 @@ import { CLIENT_SEED_RE, type FairSeedService } from "../fair-seeds";
 
 type Row = typeof ladderRounds.$inferSelect;
 
-/** Client view. The layout (Tower) or the fatal lane (Crossing) stays secret until the round ends. */
+const hiloPicks = (picks: number[]): HiloChoice[] => picks.map((p) => HILO_CHOICES[p]!);
+
+/**
+ * Client view. Anything still ahead of the player (the Tower layout, the
+ * fatal lane, the keeper's next dives, the next card) stays secret until the
+ * round ends.
+ */
 function toDTO(row: Row): LadderRoundDTO {
   const game = row.game as LadderGame;
   const mode = row.mode as LadderMode;
   const over = row.status !== "playing";
   const top = ladderLength(game, mode);
+  const cards = game === "hilo" ? hiloCards(row.serverSeed, row.clientSeed) : null;
+  // Hi-Lo: every card seen so far, the current (or losing) card last.
+  const seen = cards ? cards.slice(0, row.picks.length + 1) : null;
   return {
     id: row.id,
     game,
@@ -40,17 +59,24 @@ function toDTO(row: Row): LadderRoundDTO {
     level: row.level,
     picks: row.picks,
     multiplierX100: row.multiplierX100,
-    nextMultiplierX100: !over && row.level < top ? ladderMultiplierX100(game, mode, row.level + 1) : null,
+    nextMultiplierX100:
+      game !== "hilo" && !over && row.level < top ? ladderMultiplierX100(game, mode, row.level + 1) : null,
     payout: row.payout,
     commit: row.serverSeedHash,
     towerLayout: over && game === "tower" ? towerLayout(row.serverSeed, row.clientSeed, mode as TowerMode) : null,
     crossingHitLane: over && game === "crossing" ? crossingHitLane(row.serverSeed, row.clientSeed, mode as CrossingMode) : null,
+    penaltyKeeper:
+      game === "penalty"
+        ? penaltyKeeper(row.serverSeed, row.clientSeed, mode as PenaltyMode).slice(0, over ? undefined : row.picks.length)
+        : null,
+    hiloCards: seen,
+    hiloNext: cards && !over ? hiloNextX100(cards, hiloPicks(row.picks), seen!.at(-1)!) : null,
     reveal: over ? { commit: row.serverSeedHash, serverSeed: row.serverSeed, clientSeed: row.clientSeed } : null,
   };
 }
 
 /**
- * Tower and Crossing: climb one step at a time, each step raising the
+ * Tower, Crossing, Penalty and Hi-Lo: climb one step at a time, each step raising the
  * multiplier; cash out any time, or lose the stake on a bad step. The
  * outcome of every step is fixed by the seeds when the round starts.
  */
@@ -119,8 +145,17 @@ export class LadderService {
     return row;
   }
 
-  /** Take the next step. Tower needs the door picked; Crossing just hops. */
-  async step(userId: string, game: LadderGame, roundId: string, input: { version: number; door?: number }): Promise<LadderUpdateDTO> {
+  /**
+   * Take the next step. Tower needs a door and Penalty a spot (`door`);
+   * Hi-Lo needs a guess (`choice`); Crossing just hops.
+   */
+  async step(
+    userId: string,
+    game: LadderGame,
+    roundId: string,
+    input: { version: number; door?: number; choice?: HiloChoice },
+  ): Promise<LadderUpdateDTO> {
+    if (game === "hilo") return this.hiloStep(userId, roundId, input);
     return this.db.transaction(async (tx) => {
       const row = await this.lock(tx, userId, game, roundId, input.version);
       const mode = row.mode as LadderMode;
@@ -135,6 +170,13 @@ export class LadderService {
           throw new GameError(400, "INVALID_DOOR", "Pick a door on this floor");
         }
         safe = towerLayout(row.serverSeed, row.clientSeed, mode as TowerMode)[row.level]!.includes(input.door!);
+        picks = [...row.picks, input.door!];
+      } else if (game === "penalty") {
+        const spots = PENALTY_CONFIG[mode as PenaltyMode].spots;
+        if (!Number.isInteger(input.door) || input.door! < 0 || input.door! >= spots) {
+          throw new GameError(400, "INVALID_SPOT", "Pick a spot in the goal");
+        }
+        safe = !penaltyKeeper(row.serverSeed, row.clientSeed, mode as PenaltyMode)[row.level]!.includes(input.door!);
         picks = [...row.picks, input.door!];
       } else {
         safe = crossingHitLane(row.serverSeed, row.clientSeed, mode as CrossingMode) !== row.level;
@@ -161,10 +203,63 @@ export class LadderService {
     });
   }
 
+  /**
+   * Hi-Lo: guess whether the next card is higher-or-same or lower-or-same,
+   * or skip it. `level` counts correct guesses; the round ends after
+   * HILO_MAX_STEPS cards, and the last one can't be skipped.
+   */
+  private async hiloStep(userId: string, roundId: string, input: { version: number; choice?: HiloChoice }) {
+    const choice = input.choice;
+    if (!choice || !HILO_CHOICES.includes(choice)) throw new GameError(400, "INVALID_CHOICE", "Pick higher, lower or skip");
+    return this.db.transaction(async (tx) => {
+      const row = await this.lock(tx, userId, "hilo", roundId, input.version);
+      const step = row.picks.length;
+      if (step >= HILO_MAX_STEPS) throw new GameError(409, "AT_THE_TOP", "No cards left. Cash out");
+      const cards = hiloCards(row.serverSeed, row.clientSeed);
+      const history = hiloPicks(row.picks);
+      const picks = [...row.picks, HILO_CHOICES.indexOf(choice)];
+
+      if (choice === "skip") {
+        if (step === HILO_MAX_STEPS - 1) throw new GameError(400, "NO_SKIP", "The last card can't be skipped");
+        const [saved] = await tx
+          .update(ladderRounds)
+          .set({ picks, version: row.version + 1 })
+          .where(eq(ladderRounds.id, row.id))
+          .returning();
+        return { round: toDTO(saved!), balance: null, nextCommit: await this.seeds.nextCommit(userId, tx) };
+      }
+
+      // A guess that can't raise the multiplier (higher on an ace) is refused.
+      if (hiloNextX100(cards, history, cards[step]!)[choice] === null) {
+        throw new GameError(400, "NO_GAIN", "That guess can't win anything. Pick the other or skip");
+      }
+      if (!hiloWins(cards[step]!, cards[step + 1]!, choice)) {
+        const [saved] = await tx
+          .update(ladderRounds)
+          .set({ status: "bust", picks, payout: 0, version: row.version + 1, settledAt: new Date() })
+          .where(eq(ladderRounds.id, row.id))
+          .returning();
+        return { round: toDTO(saved!), balance: null, nextCommit: await this.seeds.nextCommit(userId, tx) };
+      }
+      const [saved] = await tx
+        .update(ladderRounds)
+        .set({
+          level: row.level + 1,
+          picks,
+          multiplierX100: hiloMultiplierX100(cards, [...history, choice]),
+          version: row.version + 1,
+        })
+        .where(eq(ladderRounds.id, row.id))
+        .returning();
+      if (picks.length === HILO_MAX_STEPS) return this.settle(tx, userId, saved!);
+      return { round: toDTO(saved!), balance: null, nextCommit: await this.seeds.nextCommit(userId, tx) };
+    });
+  }
+
   async cashOut(userId: string, game: LadderGame, roundId: string, input: { version: number }): Promise<LadderUpdateDTO> {
     return this.db.transaction(async (tx) => {
       const row = await this.lock(tx, userId, game, roundId, input.version);
-      if (row.level === 0) throw new GameError(400, "NOTHING_TO_CASH_OUT", "Take at least one step first");
+      if (row.level === 0) throw new GameError(400, "NOTHING_TO_CASH_OUT", "Win at least one step first");
       return this.settle(tx, userId, row);
     });
   }

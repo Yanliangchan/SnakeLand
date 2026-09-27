@@ -8,6 +8,7 @@ import { Avatar, BalanceCounter } from "@/components/ui";
 import { GAME_ACCENT } from "@/lib/games-ui";
 import { tap, tableSwitch, tapTransition } from "@/lib/motion";
 import { useSession } from "@/providers/session";
+import { GameSwitcher } from "./GameSwitcher";
 import { GameHelpSheet, GameTour } from "./games/shared/GameHelp";
 import { SessionStatsBar } from "./games/shared/SessionStatsBar";
 
@@ -24,6 +25,8 @@ export interface GameShellProps {
    */
   tableId: string;
   onNextTable?: () => void;
+  /** Extra header buttons, e.g. live chat. */
+  headerExtra?: React.ReactNode;
   /** Bet controls. Rendered outside the keyed stage so they never remount on table switch. */
   controls: React.ReactNode;
   /** The felt/board: the only part that differs per game. */
@@ -36,7 +39,7 @@ export interface GameShellProps {
  * control panel sits on the left from `lg` up and at the bottom below that.
  * The stage is a size container, so games scale with `cqw`/`cqh` units.
  */
-export function GameShell({ game, title, tableLabel, tableId, onNextTable, controls, children }: GameShellProps) {
+export function GameShell({ game, title, tableLabel, tableId, onNextTable, headerExtra, controls, children }: GameShellProps) {
   const { me } = useSession();
   const [helpOpen, setHelpOpen] = useState(false);
   const accent = GAME_ACCENT[game];
@@ -70,7 +73,7 @@ export function GameShell({ game, title, tableLabel, tableId, onNextTable, contr
               </Link>
             </motion.div>
             <div className="min-w-0">
-              <h1 className="truncate text-[15px] font-semibold">{title}</h1>
+              <GameSwitcher game={game} title={title} />
               <AnimatePresence mode="wait" initial={false}>
                 {tableLabel && (
                   <motion.p key={tableLabel} {...tableSwitch} className="text-[12px] text-fg-muted tabular">
@@ -82,6 +85,7 @@ export function GameShell({ game, title, tableLabel, tableId, onNextTable, contr
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3">
+            {headerExtra}
             <motion.button
               whileTap={tap}
               transition={tapTransition}

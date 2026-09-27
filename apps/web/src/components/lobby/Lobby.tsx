@@ -59,12 +59,19 @@ export function Lobby() {
           <DailyClaim />
         </div>
 
-        <div className="mt-3 grid grid-cols-2 gap-3">
+        <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-3">
           {[
+            { href: "/lab", title: "The Lab", sub: "Hacking puzzles for chips" },
             { href: "/leaderboard", title: "Leaderboards", sub: "Weekly titles · all-time rewards" },
             { href: "/profile", title: "Profile", sub: "Stats, titles and rewards" },
-          ].map((l) => (
-            <motion.div key={l.href} {...fadeUp} whileTap={tap} transition={tapTransition}>
+          ].map((l, i) => (
+            <motion.div
+              key={l.href}
+              {...fadeUp}
+              whileTap={tap}
+              transition={tapTransition}
+              className={i === 0 ? "col-span-2 md:col-span-1" : undefined}
+            >
               <Link
                 href={l.href}
                 className="flex items-center justify-between gap-3 rounded-[var(--radius-card)] bg-surface px-4 py-3.5 transition-colors hairline hover:border-hairline-strong sm:px-5"
@@ -102,10 +109,16 @@ export function Lobby() {
                   <Link
                     href={`/play/${id}`}
                     style={{ "--accent": GAME_ACCENT[id] } as React.CSSProperties}
-                    className="group flex h-full min-h-32 flex-col justify-between rounded-[var(--radius-card)] border border-[color-mix(in_srgb,var(--accent)_28%,transparent)] bg-surface p-4 transition-colors hover:border-[color-mix(in_srgb,var(--accent)_70%,transparent)] sm:min-h-36 sm:p-5 xl:min-h-44"
+                    className="group relative flex h-full min-h-32 flex-col justify-between overflow-hidden rounded-[var(--radius-card)] border border-[color-mix(in_srgb,var(--accent)_28%,transparent)] bg-surface p-4 transition-colors hover:border-[color-mix(in_srgb,var(--accent)_70%,transparent)] sm:min-h-36 sm:p-5 xl:min-h-44"
                   >
-                    <div className="flex items-start justify-between">
-                      <span className="text-[var(--accent)] opacity-80 transition-opacity group-hover:opacity-100">
+                    {/* A soft glow in the game's colour, brighter on hover. */}
+                    <span
+                      aria-hidden
+                      className="pointer-events-none absolute -right-10 -top-12 size-44 rounded-full opacity-[0.10] blur-2xl transition-opacity duration-300 group-hover:opacity-[0.2]"
+                      style={{ background: "var(--accent)" }}
+                    />
+                    <div className="relative flex items-start justify-between">
+                      <span className="grid size-11 place-items-center rounded-[12px] bg-[color-mix(in_srgb,var(--accent)_13%,transparent)] text-[var(--accent)] ring-1 ring-[color-mix(in_srgb,var(--accent)_28%,transparent)] transition-transform duration-300 group-hover:scale-105 sm:size-12">
                         <GameGlyph game={id} />
                       </span>
                       {game.kind === "live" || id === "roulette" ? (
@@ -114,7 +127,7 @@ export function Lobby() {
                         </span>
                       ) : null}
                     </div>
-                    <div>
+                    <div className="relative">
                       <p className="text-[16px] font-semibold tracking-[var(--tracking-tightish)]">{game.name}</p>
                       <p className="mt-1 hidden text-[13px] text-fg-muted sm:block">{game.tagline}</p>
                     </div>

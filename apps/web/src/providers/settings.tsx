@@ -2,7 +2,7 @@
 
 import { MotionConfig } from "framer-motion";
 import { createContext, useCallback, useContext, useMemo, useSyncExternalStore } from "react";
-import { playSound, type SoundName } from "@/lib/sound";
+import { playSound, setVolume, type SoundName } from "@/lib/sound";
 
 export type MotionPref = "system" | "reduced" | "full";
 
@@ -12,11 +12,13 @@ export interface Prefs {
   motion: MotionPref;
   /** Shorter animations for players who want pace. */
   fast: boolean;
+  /** Sound volume, 0–1. */
+  volume: number;
 }
 
 const KEY = "snk:prefs";
 const LEGACY_SOUND_KEY = "snk:sound";
-const DEFAULTS: Prefs = { sound: false, haptics: true, motion: "system", fast: false };
+const DEFAULTS: Prefs = { sound: false, haptics: true, motion: "system", fast: false, volume: 0.7 };
 const listeners = new Set<() => void>();
 let memory: Prefs | null = null;
 
@@ -58,16 +60,24 @@ const noopSubscribe = () => () => {};
 const getOs = () => mq()?.matches ?? false;
 
 /** Vibration patterns (ms). Ignored where the Vibration API is missing (e.g. iOS Safari). */
-const HAPTIC: Record<SoundName | "lose" | "heavy", number | number[]> = {
+const HAPTIC: Record<SoundName | "heavy", number | number[] | 0> = {
   click: 8,
+  chip: 8,
   flip: 5,
+  pop: 10,
+  whoosh: 0,
+  tick: 0,
+  coin: [12, 30, 16],
   chime: [18, 40, 28],
+  win: [18, 40, 28],
+  bigwin: [20, 40, 20, 40, 60],
   lose: 45,
   heavy: 30,
 };
 export type HapticName = keyof typeof HAPTIC;
 
 function vibrate(name: HapticName) {
+  if (!HAPTIC[name]) return;
   try {
     navigator.vibrate?.(HAPTIC[name]);
   } catch {
@@ -105,7 +115,10 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
 
   const play = useCallback((name: SoundName) => {
     const p = getSnapshot();
-    if (p.sound) playSound(name);
+    if (p.sound) {
+      setVolume(p.volume);
+      playSound(name);
+    }
     if (p.haptics) vibrate(name);
   }, []);
   const haptic = useCallback((name: HapticName) => {

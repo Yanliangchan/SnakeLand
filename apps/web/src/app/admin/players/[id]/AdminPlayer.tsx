@@ -26,6 +26,7 @@ const TX_LABEL: Record<string, string> = {
   refund: "Refund",
   guest_merge: "Guest merge",
   admin_adjust: "Admin",
+  lab_reward: "Lab",
 };
 
 function Section({ title, children, className }: { title: string; children: React.ReactNode; className?: string }) {
@@ -245,6 +246,14 @@ export function AdminPlayer({ id }: { id: string }) {
               onClick={() => run("suspend", () => adminApi.suspend(id, !suspended), suspended ? "Unsuspended" : "Suspended", !suspended)}
             >
               {suspended ? "Unsuspend" : confirm === "suspend" ? "Confirm suspend" : "Suspend"}
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              loading={busy === "mute"}
+              onClick={() => run("mute", () => adminApi.chatMute(id, !data.chatMutedAt), data.chatMutedAt ? "Chat unmuted" : "Chat muted", false)}
+            >
+              {data.chatMutedAt ? "Unmute chat" : "Mute chat"}
             </Button>
             <Button
               variant="secondary"

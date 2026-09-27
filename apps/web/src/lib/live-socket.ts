@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { LiveRoom } from "@snakeland/shared";
+import type { ChatMessageDTO, LiveRoom } from "@snakeland/shared";
 import { api } from "./api";
 import { WS_URL } from "./config";
 
@@ -9,6 +9,13 @@ import { WS_URL } from "./config";
 const HIDDEN_GRACE_MS = 60_000;
 
 type Message = { type: string; serverNow?: string } & Record<string, unknown>;
+
+/** Chat rides the game's socket; the chat panel listens here instead of opening its own. */
+const chatListeners = new Set<(m: ChatMessageDTO) => void>();
+export function onLiveChat(listener: (m: ChatMessageDTO) => void): () => void {
+  chatListeners.add(listener);
+  return () => chatListeners.delete(listener);
+}
 
 /**
  * The live-game WebSocket. One socket per page, sitting in one room;
@@ -75,6 +82,10 @@ export function useLiveSocket(room: LiveRoom, onMessage: (msg: Message) => void)
           return;
         }
         if (typeof msg.serverNow === "string") offsetMs.current = new Date(msg.serverNow).getTime() - Date.now();
+        if (msg.type === "chat") {
+          for (const l of chatListeners) l(msg.message as ChatMessageDTO);
+          return;
+        }
         handler.current(msg);
       };
       ws.onclose = () => {
