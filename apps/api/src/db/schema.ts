@@ -171,7 +171,8 @@ export const transactions = pgTable(
     check(
       "transactions_amount_sign",
       sql`(${t.type} = 'bet' AND ${t.amount} < 0)
-        OR (${t.type}::text IN ('payout', 'refund', 'daily_claim', 'signup_bonus', 'lab_reward', 'bonus_spin', 'referral', 'rain', 'lab_track') AND ${t.amount} > 0)
+        OR (${t.type}::text IN ('payout', 'refund', 'daily_claim', 'signup_bonus', 'lab_reward', 'bonus_spin', 'referral', 'rain', 'lab_track', 'event_prize', 'event_refund') AND ${t.amount} > 0)
+        OR (${t.type}::text = 'event_entry' AND ${t.amount} < 0)
         OR (${t.type}::text IN ('guest_merge', 'admin_adjust', 'tip') AND ${t.amount} <> 0)`,
     ),
     check(
@@ -192,12 +193,16 @@ export const blackjackTables = pgTable(
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
+    /** Set when the round was played with an event stack instead of the wallet. */
+    eventId: uuid("event_id").references(() => events.id, { onDelete: "restrict" }),
     createdAt: createdAt(),
     closedAt: timestamp("closed_at", { withTimezone: true }),
   },
   (t) => [
-    // One open table per user.
-    uniqueIndex("blackjack_tables_one_open_uq").on(t.userId).where(sql`${t.closedAt} IS NULL`),
+    // One open table per user (and per event).
+    uniqueIndex("blackjack_tables_one_open_uq")
+      .on(t.userId, sql`coalesce(${t.eventId}, '00000000-0000-0000-0000-000000000000'::uuid)`)
+      .where(sql`${t.closedAt} IS NULL`),
   ],
 );
 
@@ -277,10 +282,16 @@ export const baccaratTables = pgTable(
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
+    /** Set when the round was played with an event stack instead of the wallet. */
+    eventId: uuid("event_id").references(() => events.id, { onDelete: "restrict" }),
     createdAt: createdAt(),
     closedAt: timestamp("closed_at", { withTimezone: true }),
   },
-  (t) => [uniqueIndex("baccarat_tables_one_open_uq").on(t.userId).where(sql`${t.closedAt} IS NULL`)],
+  (t) => [
+    uniqueIndex("baccarat_tables_one_open_uq")
+      .on(t.userId, sql`coalesce(${t.eventId}, '00000000-0000-0000-0000-000000000000'::uuid)`)
+      .where(sql`${t.closedAt} IS NULL`),
+  ],
 );
 
 export const baccaratShoes = pgTable(
@@ -470,6 +481,8 @@ export const minesRounds = pgTable(
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
+    /** Set when the round was played with an event stack instead of the wallet. */
+    eventId: uuid("event_id").references(() => events.id, { onDelete: "restrict" }),
     status: minesStatusEnum("status").notNull().default("playing"),
     bet: bigint("bet", { mode: "number" }).notNull(),
     /** Board side length; tiles = size². */
@@ -489,7 +502,9 @@ export const minesRounds = pgTable(
   },
   (t) => [
     index("mines_rounds_user_idx").on(t.userId, t.createdAt.desc()),
-    uniqueIndex("mines_rounds_one_active_uq").on(t.userId).where(sql`${t.status} = 'playing'`),
+    uniqueIndex("mines_rounds_one_active_uq")
+      .on(t.userId, sql`coalesce(${t.eventId}, '00000000-0000-0000-0000-000000000000'::uuid)`)
+      .where(sql`${t.status} = 'playing'`),
     check("mines_rounds_size_range", sql`${t.size} BETWEEN 3 AND 8`),
     check("mines_rounds_mines_range", sql`${t.mines} BETWEEN 1 AND ${t.size} * ${t.size} - 1`),
   ],
@@ -504,6 +519,8 @@ export const plinkoDrops = pgTable(
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
+    /** Set when the round was played with an event stack instead of the wallet. */
+    eventId: uuid("event_id").references(() => events.id, { onDelete: "restrict" }),
     bet: bigint("bet", { mode: "number" }).notNull(),
     rows: integer("rows").notNull(),
     risk: plinkoRiskEnum("risk").notNull(),
@@ -533,6 +550,8 @@ export const carrierFlights = pgTable(
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
+    /** Set when the round was played with an event stack instead of the wallet. */
+    eventId: uuid("event_id").references(() => events.id, { onDelete: "restrict" }),
     bet: bigint("bet", { mode: "number" }).notNull(),
     mode: text("mode").notNull(),
     landed: boolean("landed").notNull(),
@@ -557,6 +576,8 @@ export const ladderRounds = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
     /** "tower", "crossing", "penalty" or "hilo". */
+    /** Set when the round was played with an event stack instead of the wallet. */
+    eventId: uuid("event_id").references(() => events.id, { onDelete: "restrict" }),
     game: gameEnum("game").notNull(),
     mode: text("mode").notNull(),
     status: ladderStatusEnum("status").notNull().default("playing"),
@@ -577,7 +598,9 @@ export const ladderRounds = pgTable(
   (t) => [
     index("ladder_rounds_user_idx").on(t.userId, t.createdAt.desc()),
     // One round in play per player per game.
-    uniqueIndex("ladder_rounds_one_active_uq").on(t.userId, t.game).where(sql`${t.status} = 'playing'`),
+    uniqueIndex("ladder_rounds_one_active_uq")
+      .on(t.userId, t.game, sql`coalesce(${t.eventId}, '00000000-0000-0000-0000-000000000000'::uuid)`)
+      .where(sql`${t.status} = 'playing'`),
     // Compared as text: the enum values are added in the same migration.
     check("ladder_rounds_game", sql`${t.game}::text IN ('tower', 'crossing', 'penalty', 'hilo')`),
   ],
@@ -713,6 +736,90 @@ export const announcements = pgTable(
   (t) => [index("announcements_active_idx").on(t.active, t.createdAt.desc())],
 );
 
+// ---------------------------------------------------------------------------
+// Events: admin-run races and free-for-alls played with an equal event stack
+// ---------------------------------------------------------------------------
+
+export const eventModeEnum = pgEnum("event_mode", ["race", "ffa"]);
+export const eventStatusEnum = pgEnum("event_status", ["scheduled", "live", "ended", "cancelled"]);
+
+export const events = pgTable(
+  "events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    title: text("title").notNull(),
+    mode: eventModeEnum("mode").notNull(),
+    /** Race: "mines" | "hilo" | "crash". Free-for-all: null. */
+    game: text("game"),
+    /** Stored status; "live" is also derived from the clock until settled. */
+    status: eventStatusEnum("status").notNull().default("scheduled"),
+    startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
+    endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
+    stack: bigint("stack", { mode: "number" }).notNull(),
+    buyIn: bigint("buy_in", { mode: "number" }).notNull().default(0),
+    topUp: bigint("top_up", { mode: "number" }).notNull().default(0),
+    /** Race: rounds each player plays. */
+    rounds: integer("rounds"),
+    /** Race (Mines): fixed board so layouts match. */
+    config: jsonb("config").$type<{ size?: number; mines?: number }>(),
+    /** Race seed: secret until the event is over; per-round seeds derive from it. */
+    seed: text("seed").notNull(),
+    seedHash: text("seed_hash").notNull(),
+    createdAt: createdAt(),
+    settledAt: timestamp("settled_at", { withTimezone: true }),
+  },
+  (t) => [
+    index("events_window_idx").on(t.status, t.endsAt),
+    check("events_window", sql`${t.endsAt} > ${t.startsAt}`),
+    check("events_amounts", sql`${t.stack} > 0 AND ${t.buyIn} >= 0 AND ${t.topUp} >= 0`),
+  ],
+);
+
+export const eventEntries = pgTable(
+  "event_entries",
+  {
+    eventId: uuid("event_id")
+      .notNull()
+      .references(() => events.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    stack: bigint("stack", { mode: "number" }).notNull(),
+    roundsPlayed: integer("rounds_played").notNull().default(0),
+    wagered: bigint("wagered", { mode: "number" }).notNull().default(0),
+    rank: integer("rank"),
+    payout: bigint("payout", { mode: "number" }),
+    joinedAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    uniqueIndex("event_entries_pk").on(t.eventId, t.userId),
+    index("event_entries_user_idx").on(t.userId),
+    check("event_entries_stack_non_negative", sql`${t.stack} >= 0`),
+  ],
+);
+
+/** Crash race rounds: the crash point is fixed by the race seed, the target by the player. */
+export const eventCrashRounds = pgTable(
+  "event_crash_rounds",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    eventId: uuid("event_id")
+      .notNull()
+      .references(() => events.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    round: integer("round").notNull(),
+    bet: bigint("bet", { mode: "number" }).notNull(),
+    targetX100: integer("target_x100").notNull(),
+    crashX100: integer("crash_x100").notNull(),
+    payout: bigint("payout", { mode: "number" }).notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("event_crash_rounds_uq").on(t.eventId, t.userId, t.round)],
+);
+
 export const schema = {
   users,
   sessions,
@@ -742,4 +849,7 @@ export const schema = {
   pushSubscriptions,
   announcements,
   adminAudit,
+  events,
+  eventEntries,
+  eventCrashRounds,
 };

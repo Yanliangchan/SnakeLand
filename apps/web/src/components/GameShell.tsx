@@ -9,6 +9,7 @@ import { GAME_ACCENT } from "@/lib/games-ui";
 import { tap, tableSwitch, tapTransition } from "@/lib/motion";
 import { useSession } from "@/providers/session";
 import { GameSwitcher } from "./GameSwitcher";
+import { EventStrip } from "./events/EventPlay";
 import { GameHelpSheet, GameTour } from "./games/shared/GameHelp";
 import { SessionStatsBar } from "./games/shared/SessionStatsBar";
 
@@ -124,6 +125,7 @@ export function GameShell({ game, title, tableLabel, tableId, onNextTable, heade
           </div>
         </div>
       </header>
+      <EventStrip />
 
       <div className="mx-auto flex min-h-0 w-full max-w-[1440px] flex-1 flex-col gap-2 p-2 sm:gap-3 sm:p-3 lg:flex-row-reverse lg:gap-4 lg:p-4">
         {/* Stage */}

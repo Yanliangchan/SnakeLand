@@ -19,3 +19,5 @@ next-env.d.ts
 
 # local redis snapshots
 *.rdb
+# Local test screenshots
+shots/

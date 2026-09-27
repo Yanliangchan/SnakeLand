@@ -100,8 +100,13 @@ export function AdminFrame({ children }: { children: React.ReactNode }) {
               <span className="rounded-full px-2 py-0.5 text-[11px] font-medium text-fg-muted hairline">Admin</span>
               <nav className="ml-2 flex gap-1 text-[13px]">
                 {[
-                  { href: "/admin", label: "Players", active: !pathname.startsWith("/admin/lab") && !pathname.startsWith("/admin/engage") },
+                  {
+                    href: "/admin",
+                    label: "Players",
+                    active: !["/admin/lab", "/admin/engage", "/admin/events"].some((p) => pathname.startsWith(p)),
+                  },
                   { href: "/admin/lab", label: "Lab", active: pathname.startsWith("/admin/lab") },
+                  { href: "/admin/events", label: "Events", active: pathname.startsWith("/admin/events") },
                   { href: "/admin/engage", label: "Engage", active: pathname.startsWith("/admin/engage") },
                 ].map((l) => (
                   <Link

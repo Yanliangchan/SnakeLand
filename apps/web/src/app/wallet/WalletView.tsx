@@ -25,6 +25,9 @@ const LABEL: Record<TransactionType, string> = {
   tip: "Tip",
   rain: "Chat rain",
   lab_track: "Lab track bonus",
+  event_entry: "Event buy-in",
+  event_prize: "Event prize",
+  event_refund: "Event refund",
 };
 
 const timeFmt = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });

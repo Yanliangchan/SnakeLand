@@ -39,6 +39,8 @@ import { ChatService, MemoryChatStore, RedisChatStore } from "./chat/service";
 import { PushService } from "./push/service";
 import { EngagementService } from "./engagement/service";
 import { engagementRoutes } from "./http/routes/engagement";
+import { eventRoutes } from "./http/routes/events";
+import { EventService } from "./events/service";
 import { MemoryAdminStore, RedisAdminStore } from "./admin/auth";
 import { AdminService } from "./admin/service";
 import { MaintenanceRunner } from "./maintenance/runner";
@@ -109,13 +111,14 @@ export async function buildApp({ env, db, redis }: { env: Env; db: Db; redis: Re
   const wallet = new WalletService(db);
   const purge = new PurgeService(db);
   const auth = createAuth({ db, env, wallet, purgeGuest: (id) => purge.purgeGuest(id) });
-  const blackjack = new BlackjackService(db, wallet);
+  const events = new EventService(db, wallet);
+  const blackjack = new BlackjackService(db, wallet, events);
   const seeds = new FairSeedService(db);
-  const mines = new MinesService(db, wallet, seeds);
-  const plinko = new PlinkoService(db, wallet, seeds);
-  const carrier = new CarrierService(db, wallet, seeds);
-  const ladder = new LadderService(db, wallet, seeds);
-  const baccarat = new BaccaratService(db, wallet);
+  const mines = new MinesService(db, wallet, seeds, events);
+  const plinko = new PlinkoService(db, wallet, seeds, events);
+  const carrier = new CarrierService(db, wallet, seeds, events);
+  const ladder = new LadderService(db, wallet, seeds, events);
+  const baccarat = new BaccaratService(db, wallet, events);
 
   // Live games: Redis pub/sub + leader lease in production; in-process without Redis (tests).
   // Each game loop sleeps until someone joins its room.
@@ -154,7 +157,15 @@ export async function buildApp({ env, db, redis }: { env: Env; db: Db; redis: Re
   await lab.ensureStarterPack();
   const adminStore = redis ? new RedisAdminStore(redis) : new MemoryAdminStore();
 
+  // Settle events whose window has closed. Settlement is idempotent under a row
+  // lock, so every instance can run this; reads also settle lazily.
+  const eventTimer = setInterval(() => {
+    events.settleDue().catch((err) => app.log.error({ err }, "event settlement failed"));
+  }, 15_000);
+  eventTimer.unref();
+
   app.addHook("onClose", async () => {
+    clearInterval(eventTimer);
     await maintenance.stop();
     await dealer.stop();
     await crashDealer.stop();
@@ -173,7 +184,7 @@ export async function buildApp({ env, db, redis }: { env: Env; db: Db; redis: Re
     origin: env.WEB_ORIGINS,
     credentials: true,
     methods: ["GET", "POST"],
-    allowedHeaders: ["content-type"],
+    allowedHeaders: ["content-type", "x-snk-event"],
     maxAge: 600,
   });
 
@@ -238,13 +249,14 @@ export async function buildApp({ env, db, redis }: { env: Env; db: Db; redis: Re
   await app.register(websocket, { options: { maxPayload: 2048 } });
   await app.register(authBridge, { auth, apiUrl: env.API_URL });
   await app.register(walletRoutes, { auth, wallet });
-  await app.register(blackjackRoutes, { auth, blackjack });
-  await app.register(instantRoutes, { auth, mines, plinko });
-  await app.register(baccaratRoutes, { auth, baccarat });
+  await app.register(blackjackRoutes, { auth, blackjack, events });
+  await app.register(instantRoutes, { auth, mines, plinko, events });
+  await app.register(baccaratRoutes, { auth, baccarat, events });
+  await app.register(eventRoutes, { auth, events });
   await app.register(liveRoutes, { auth, hub, tickets, webOrigins: env.WEB_ORIGINS, chat, engagement });
   await app.register(rouletteRoutes, { auth, roulette });
   await app.register(crashRoutes, { auth, crash });
-  await app.register(arcadeRoutes, { auth, carrier, ladder });
+  await app.register(arcadeRoutes, { auth, carrier, ladder, events });
   await app.register(progressRoutes, { auth, progress, purge });
   await app.register(pushRoutes, { auth, push });
   await app.register(engagementRoutes, { auth, wallet, engagement });
@@ -252,6 +264,7 @@ export async function buildApp({ env, db, redis }: { env: Env; db: Db; redis: Re
   await app.register(adminRoutes, {
     lab,
     engagement,
+    events,
     passwordHash: env.ADMIN_PASSWORD_HASH,
     secureCookies: env.NODE_ENV === "production",
     store: adminStore,
@@ -260,5 +273,5 @@ export async function buildApp({ env, db, redis }: { env: Env; db: Db; redis: Re
     purge,
   });
 
-  return { app, auth, wallet, blackjack, mines, plinko, baccarat, roulette, dealer, carrier, ladder, crash, crashDealer, progress, purge, maintenance, admin, presence, lab, chat, push, engagement };
+  return { app, auth, wallet, blackjack, mines, plinko, baccarat, roulette, dealer, carrier, ladder, crash, crashDealer, progress, purge, maintenance, admin, presence, lab, chat, push, engagement, events };
 }

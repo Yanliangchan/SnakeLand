@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import {
   HILO_CHOICES,
   HILO_MAX_STEPS,
@@ -28,6 +28,7 @@ import {
 } from "@snakeland/shared";
 import type { Db, Tx } from "../../db/client";
 import { ladderRounds } from "../../db/schema";
+import type { EventService, PlayCtx } from "../../events/service";
 import type { WalletService } from "../../wallet/wallet-service";
 import { GameError } from "../errors";
 import { CLIENT_SEED_RE, type FairSeedService } from "../fair-seeds";
@@ -41,10 +42,12 @@ const hiloPicks = (picks: number[]): HiloChoice[] => picks.map((p) => HILO_CHOIC
  * fatal lane, the keeper's next dives, the next card) stays secret until the
  * round ends.
  */
-function toDTO(row: Row): LadderRoundDTO {
+function toDTO(row: Row, hide = false): LadderRoundDTO {
   const game = row.game as LadderGame;
   const mode = row.mode as LadderMode;
-  const over = row.status !== "playing";
+  // `over` gates the reveal; a race keeps it hidden until the event ends.
+  const over = row.status !== "playing" && !hide;
+  const playing = row.status === "playing";
   const top = ladderLength(game, mode);
   const cards = game === "hilo" ? hiloCards(row.serverSeed, row.clientSeed) : null;
   // Hi-Lo: every card seen so far, the current (or losing) card last.
@@ -60,7 +63,7 @@ function toDTO(row: Row): LadderRoundDTO {
     picks: row.picks,
     multiplierX100: row.multiplierX100,
     nextMultiplierX100:
-      game !== "hilo" && !over && row.level < top ? ladderMultiplierX100(game, mode, row.level + 1) : null,
+      game !== "hilo" && playing && row.level < top ? ladderMultiplierX100(game, mode, row.level + 1) : null,
     payout: row.payout,
     commit: row.serverSeedHash,
     towerLayout: over && game === "tower" ? towerLayout(row.serverSeed, row.clientSeed, mode as TowerMode) : null,
@@ -70,7 +73,7 @@ function toDTO(row: Row): LadderRoundDTO {
         ? penaltyKeeper(row.serverSeed, row.clientSeed, mode as PenaltyMode).slice(0, over ? undefined : row.picks.length)
         : null,
     hiloCards: seen,
-    hiloNext: cards && !over ? hiloNextX100(cards, hiloPicks(row.picks), seen!.at(-1)!) : null,
+    hiloNext: cards && playing ? hiloNextX100(cards, hiloPicks(row.picks), seen!.at(-1)!) : null,
     reveal: over ? { commit: row.serverSeedHash, serverSeed: row.serverSeed, clientSeed: row.clientSeed } : null,
   };
 }
@@ -85,17 +88,39 @@ export class LadderService {
     private readonly db: Db,
     private readonly wallet: WalletService,
     private readonly seeds: FairSeedService,
+    private readonly events?: EventService,
   ) {}
 
-  async state(userId: string, game: LadderGame): Promise<LadderStateDTO> {
+  /** Bets and payouts go to the event stack for event rounds, otherwise the wallet. */
+  private async funds(tx: Tx, eventId: string | null, game: LadderGame, input: { userId: string; amount: number; roundId: string; key: string }) {
+    if (eventId) return this.events!.apply(tx, eventId, input);
+    const type = input.amount < 0 ? "bet" : "payout";
+    return this.wallet.apply({ userId: input.userId, amount: input.amount, type, game, roundId: input.roundId, idempotencyKey: input.key }, tx);
+  }
+
+  private dto = async (row: Row) => toDTO(row, await this.events?.hidesReveal(row.eventId ?? null));
+
+  async state(userId: string, game: LadderGame, ctx: PlayCtx | null = null): Promise<LadderStateDTO> {
     const [active] = await this.db
       .select()
       .from(ladderRounds)
-      .where(and(eq(ladderRounds.userId, userId), eq(ladderRounds.game, game), eq(ladderRounds.status, "playing")));
-    return { round: active ? toDTO(active) : null, nextCommit: await this.seeds.nextCommit(userId) };
+      .where(
+        and(
+          eq(ladderRounds.userId, userId),
+          eq(ladderRounds.game, game),
+          eq(ladderRounds.status, "playing"),
+          ctx ? eq(ladderRounds.eventId, ctx.eventId) : isNull(ladderRounds.eventId),
+        ),
+      );
+    return { round: active ? await this.dto(active) : null, nextCommit: await this.seeds.nextCommit(userId) };
   }
 
-  async start(userId: string, game: LadderGame, input: { bet: number; mode: string; clientSeed: string }): Promise<LadderUpdateDTO> {
+  async start(
+    userId: string,
+    game: LadderGame,
+    input: { bet: number; mode: string; clientSeed: string },
+    ctx: PlayCtx | null = null,
+  ): Promise<LadderUpdateDTO> {
     const { min, max } = INSTANT_BET_LIMITS;
     if (!Number.isSafeInteger(input.bet) || input.bet < min || input.bet > max) {
       throw new GameError(400, "BET_OUT_OF_RANGE", `Bets are ${min}–${max.toLocaleString()} chips`);
@@ -108,28 +133,36 @@ export class LadderService {
       const [active] = await tx
         .select({ id: ladderRounds.id })
         .from(ladderRounds)
-        .where(and(eq(ladderRounds.userId, userId), eq(ladderRounds.game, game), eq(ladderRounds.status, "playing")));
+        .where(
+          and(
+            eq(ladderRounds.userId, userId),
+            eq(ladderRounds.game, game),
+            eq(ladderRounds.status, "playing"),
+            ctx ? eq(ladderRounds.eventId, ctx.eventId) : isNull(ladderRounds.eventId),
+          ),
+        );
       if (active) throw new GameError(409, "ROUND_IN_PROGRESS", "Finish your current round first");
-      const seed = await this.seeds.consume(tx, userId);
+      // A race hands every player the same seed for the same round.
+      const seed = ctx?.race
+        ? await this.events!.raceSeed(tx, ctx.eventId, userId)
+        : { ...(await this.seeds.consume(tx, userId)), clientSeed: input.clientSeed };
       const id = crypto.randomUUID();
-      const debit = await this.wallet.apply(
-        { userId, amount: -input.bet, type: "bet", game, roundId: id, idempotencyKey: `${id}:bet` },
-        tx,
-      );
+      const debit = await this.funds(tx, ctx?.eventId ?? null, game, { userId, amount: -input.bet, roundId: id, key: `${id}:bet` });
       const [row] = await tx
         .insert(ladderRounds)
         .values({
           id,
           userId,
+          eventId: ctx?.eventId ?? null,
           game,
           mode: input.mode,
           bet: input.bet,
           serverSeed: seed.serverSeed,
           serverSeedHash: seed.commit,
-          clientSeed: input.clientSeed,
+          clientSeed: seed.clientSeed,
         })
         .returning();
-      return { round: toDTO(row!), balance: debit.balance, nextCommit: seed.nextCommit };
+      return { round: await this.dto(row!), balance: debit.balance, nextCommit: await this.seeds.nextCommit(userId, tx) };
     });
   }
 
@@ -188,7 +221,7 @@ export class LadderService {
           .set({ status: "bust", picks, payout: 0, version: row.version + 1, settledAt: new Date() })
           .where(eq(ladderRounds.id, row.id))
           .returning();
-        return { round: toDTO(saved!), balance: null, nextCommit: await this.seeds.nextCommit(userId, tx) };
+        return { round: await this.dto(saved!), balance: null, nextCommit: await this.seeds.nextCommit(userId, tx) };
       }
 
       const level = row.level + 1;
@@ -199,7 +232,7 @@ export class LadderService {
         .returning();
       // Reached the top: nothing left to risk, so cash out automatically.
       if (level === top) return this.settle(tx, userId, saved!);
-      return { round: toDTO(saved!), balance: null, nextCommit: await this.seeds.nextCommit(userId, tx) };
+      return { round: await this.dto(saved!), balance: null, nextCommit: await this.seeds.nextCommit(userId, tx) };
     });
   }
 
@@ -226,7 +259,7 @@ export class LadderService {
           .set({ picks, version: row.version + 1 })
           .where(eq(ladderRounds.id, row.id))
           .returning();
-        return { round: toDTO(saved!), balance: null, nextCommit: await this.seeds.nextCommit(userId, tx) };
+        return { round: await this.dto(saved!), balance: null, nextCommit: await this.seeds.nextCommit(userId, tx) };
       }
 
       // A guess that can't raise the multiplier (higher on an ace) is refused.
@@ -239,7 +272,7 @@ export class LadderService {
           .set({ status: "bust", picks, payout: 0, version: row.version + 1, settledAt: new Date() })
           .where(eq(ladderRounds.id, row.id))
           .returning();
-        return { round: toDTO(saved!), balance: null, nextCommit: await this.seeds.nextCommit(userId, tx) };
+        return { round: await this.dto(saved!), balance: null, nextCommit: await this.seeds.nextCommit(userId, tx) };
       }
       const [saved] = await tx
         .update(ladderRounds)
@@ -252,7 +285,7 @@ export class LadderService {
         .where(eq(ladderRounds.id, row.id))
         .returning();
       if (picks.length === HILO_MAX_STEPS) return this.settle(tx, userId, saved!);
-      return { round: toDTO(saved!), balance: null, nextCommit: await this.seeds.nextCommit(userId, tx) };
+      return { round: await this.dto(saved!), balance: null, nextCommit: await this.seeds.nextCommit(userId, tx) };
     });
   }
 
@@ -267,15 +300,12 @@ export class LadderService {
   private async settle(tx: Tx, userId: string, row: Row): Promise<LadderUpdateDTO> {
     const game = row.game as LadderGame;
     const payout = applyX100(row.bet, row.multiplierX100);
-    const credit = await this.wallet.apply(
-      { userId, amount: payout, type: "payout", game, roundId: row.id, idempotencyKey: `${row.id}:payout` },
-      tx,
-    );
+    const credit = await this.funds(tx, row.eventId, game, { userId, amount: payout, roundId: row.id, key: `${row.id}:payout` });
     const [saved] = await tx
       .update(ladderRounds)
       .set({ status: "cashed_out", payout, version: row.version + 1, settledAt: new Date() })
       .where(eq(ladderRounds.id, row.id))
       .returning();
-    return { round: toDTO(saved!), balance: credit.balance, nextCommit: await this.seeds.nextCommit(userId, tx) };
+    return { round: await this.dto(saved!), balance: credit.balance, nextCommit: await this.seeds.nextCommit(userId, tx) };
   }
 }

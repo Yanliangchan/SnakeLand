@@ -3,21 +3,22 @@ import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
 import { BLACKJACK_ACTIONS, BLACKJACK_RULES } from "@snakeland/shared";
 import type { Auth } from "../../auth";
+import { EVENT_HEADER, type EventService } from "../../events/service";
 import { CLIENT_SEED_RE, type BlackjackService } from "../../games/blackjack/service";
 import { requireUser } from "../session";
 
-export async function blackjackRoutes(app: FastifyInstance, opts: { auth: Auth; blackjack: BlackjackService }) {
+export async function blackjackRoutes(app: FastifyInstance, opts: { auth: Auth; blackjack: BlackjackService; events: EventService }) {
   const r = app.withTypeProvider<ZodTypeProvider>();
   r.addHook("preHandler", requireUser(opts.auth));
   const bj = opts.blackjack;
 
   // POST (not GET): it may create the table, and must carry the CSRF origin check.
-  r.post("/v1/blackjack/table", async (request) => bj.getTable(request.user!.id));
+  r.post("/v1/blackjack/table", async (request) => bj.getTable(request.user!.id, await opts.events.resolve(request.headers[EVENT_HEADER], request.user!.id, "blackjack")));
 
   r.post(
     "/v1/blackjack/table/next",
     { config: { rateLimit: { max: 20, timeWindow: "1 minute" } } },
-    async (request) => bj.nextTable(request.user!.id),
+    async (request) => bj.nextTable(request.user!.id, await opts.events.resolve(request.headers[EVENT_HEADER], request.user!.id, "blackjack")),
   );
 
   r.post(
@@ -31,7 +32,7 @@ export async function blackjackRoutes(app: FastifyInstance, opts: { auth: Auth; 
         }),
       },
     },
-    async (request) => bj.startRound(request.user!.id, request.body),
+    async (request) => bj.startRound(request.user!.id, request.body, await opts.events.resolve(request.headers[EVENT_HEADER], request.user!.id, "blackjack")),
   );
 
   r.post(

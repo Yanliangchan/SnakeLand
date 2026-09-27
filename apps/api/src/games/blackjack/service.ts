@@ -15,7 +15,8 @@ import {
 } from "@snakeland/shared";
 import type { Db, Tx } from "../../db/client";
 import { blackjackRounds, blackjackShoes, blackjackTables } from "../../db/schema";
-import type { WalletService } from "../../wallet/wallet-service";
+import type { EventService, PlayCtx } from "../../events/service";
+import type { ApplyInput, WalletService } from "../../wallet/wallet-service";
 import { GameError } from "../errors";
 import { act, deal, totalPayout, totalStaked, type EngineState } from "./engine";
 import { CUT_POSITION, toRevealedShoeDTO, toRoundDTO, toShoeDTO } from "./dto";
@@ -52,7 +53,13 @@ export class BlackjackService {
   constructor(
     private readonly db: Db,
     private readonly wallet: WalletService,
+    private readonly events?: EventService,
   ) {}
+
+  /** Event tables bet against the event stack; everything else uses the wallet. */
+  private funds(tx: Tx, eventId: string | null, input: ApplyInput) {
+    return eventId ? this.events!.apply(tx, eventId, input) : this.wallet.apply(input, tx);
+  }
 
   // ---------------------------------------------------------------- tables
 
@@ -72,25 +79,31 @@ export class BlackjackService {
     return shoe!;
   }
 
-  private async lockOpenTable(tx: Tx, userId: string) {
+  private async lockOpenTable(tx: Tx, userId: string, eventId: string | null) {
     const [table] = await tx
       .select()
       .from(blackjackTables)
-      .where(and(eq(blackjackTables.userId, userId), isNull(blackjackTables.closedAt)))
+      .where(
+        and(
+          eq(blackjackTables.userId, userId),
+          isNull(blackjackTables.closedAt),
+          eventId ? eq(blackjackTables.eventId, eventId) : isNull(blackjackTables.eventId),
+        ),
+      )
       .for("update");
     return table ?? null;
   }
 
-  private async openOrCreateTable(tx: Tx, userId: string) {
-    const existing = await this.lockOpenTable(tx, userId);
+  private async openOrCreateTable(tx: Tx, userId: string, eventId: string | null) {
+    const existing = await this.lockOpenTable(tx, userId, eventId);
     if (existing) return existing;
     // ON CONFLICT covers a concurrent request creating the table first.
-    const [created] = await tx.insert(blackjackTables).values({ userId }).onConflictDoNothing().returning();
+    const [created] = await tx.insert(blackjackTables).values({ userId, eventId }).onConflictDoNothing().returning();
     if (created) {
       await this.createShoe(tx, created.id, userId);
       return created;
     }
-    const table = await this.lockOpenTable(tx, userId);
+    const table = await this.lockOpenTable(tx, userId, eventId);
     if (!table) throw new Error("failed to open a table");
     return table;
   }
@@ -135,14 +148,16 @@ export class BlackjackService {
   }
 
   /** The user's open table (resuming any hand in progress), creating one if needed. */
-  async getTable(userId: string): Promise<BlackjackTableDTO> {
-    return this.db.transaction(async (tx) => this.tableDTO(tx, await this.openOrCreateTable(tx, userId)));
+  async getTable(userId: string, ctx: PlayCtx | null = null): Promise<BlackjackTableDTO> {
+    const eventId = ctx?.eventId ?? null;
+    return this.db.transaction(async (tx) => this.tableDTO(tx, await this.openOrCreateTable(tx, userId, eventId)));
   }
 
   /** Leave the current table: its shoe is revealed and a fresh table + shoe is opened. */
-  async nextTable(userId: string): Promise<NextTableDTO> {
+  async nextTable(userId: string, ctx: PlayCtx | null = null): Promise<NextTableDTO> {
+    const eventId = ctx?.eventId ?? null;
     return this.db.transaction(async (tx) => {
-      const current = await this.lockOpenTable(tx, userId);
+      const current = await this.lockOpenTable(tx, userId, eventId);
       let revealedShoe: RevealedShoeDTO | null = null;
       if (current) {
         const [active] = await tx
@@ -159,7 +174,7 @@ export class BlackjackService {
         revealedShoe = toRevealedShoeDTO(revealed!);
         await tx.update(blackjackTables).set({ closedAt: new Date() }).where(eq(blackjackTables.id, current.id));
       }
-      const table = await this.openOrCreateTable(tx, userId);
+      const table = await this.openOrCreateTable(tx, userId, eventId);
       return { table: await this.tableDTO(tx, table), revealedShoe };
     });
   }
@@ -179,7 +194,9 @@ export class BlackjackService {
   async startRound(
     userId: string,
     input: { tableId: string; bet: number; clientSeed?: string },
+    ctx: PlayCtx | null = null,
   ): Promise<BlackjackUpdateDTO> {
+    const eventId = ctx?.eventId ?? null;
     const { minBet, maxBet } = BLACKJACK_RULES;
     if (!Number.isSafeInteger(input.bet) || input.bet < minBet || input.bet > maxBet) {
       throw new GameError(400, "BET_OUT_OF_RANGE", `Bets are ${minBet}–${maxBet.toLocaleString()} chips`);
@@ -189,7 +206,7 @@ export class BlackjackService {
     }
 
     return this.db.transaction(async (tx) => {
-      const table = await this.lockOpenTable(tx, userId);
+      const table = await this.lockOpenTable(tx, userId, eventId);
       if (!table || table.id !== input.tableId) throw new GameError(404, "TABLE_NOT_FOUND", "Table not found");
 
       const [active] = await tx
@@ -211,8 +228,7 @@ export class BlackjackService {
       }
 
       const roundId = randomUUID();
-      const bet = await this.wallet.apply(
-        {
+      const bet = await this.funds(tx, eventId, {
           userId,
           amount: -input.bet,
           type: "bet",
@@ -220,9 +236,7 @@ export class BlackjackService {
           tableId: table.id,
           roundId,
           idempotencyKey: `${roundId}:bet:0`,
-        },
-        tx,
-      );
+        });
 
       const drawer = shoeDrawer(shoe);
       const shoeStart = drawer.position();
@@ -241,7 +255,7 @@ export class BlackjackService {
         })
         .returning();
 
-      return this.persist(tx, userId, row!, shoe, state, drawer.position(), bet.balance);
+      return this.persist(tx, userId, eventId, row!, shoe, state, drawer.position(), bet.balance);
     });
   }
 
@@ -262,6 +276,11 @@ export class BlackjackService {
         throw new GameError(409, "STALE_VERSION", "This hand changed. Refresh and try again");
       }
 
+      const [table] = await tx
+        .select({ eventId: blackjackTables.eventId })
+        .from(blackjackTables)
+        .where(eq(blackjackTables.id, round.tableId));
+      const eventId = table?.eventId ?? null;
       const [shoe] = await tx.select().from(blackjackShoes).where(eq(blackjackShoes.id, round.shoeId)).for("update");
       if (!shoe) throw new Error("round has no shoe");
       const drawer = shoeDrawer(shoe);
@@ -269,8 +288,7 @@ export class BlackjackService {
 
       let balance: number | null = null;
       if (result.debit > 0) {
-        const debit = await this.wallet.apply(
-          {
+        const debit = await this.funds(tx, eventId, {
             userId,
             amount: -result.debit,
             type: "bet",
@@ -279,12 +297,10 @@ export class BlackjackService {
             roundId: round.id,
             idempotencyKey: `${round.id}:bet:${round.version}`,
             meta: { action: input.action },
-          },
-          tx,
-        );
+          });
         balance = debit.balance;
       }
-      return this.persist(tx, userId, round, shoe, result.state, drawer.position(), balance);
+      return this.persist(tx, userId, eventId, round, shoe, result.state, drawer.position(), balance);
     });
   }
 
@@ -292,6 +308,7 @@ export class BlackjackService {
   private async persist(
     tx: Tx,
     userId: string,
+    eventId: string | null,
     round: RoundRow,
     shoe: ShoeRow,
     state: EngineState,
@@ -303,8 +320,7 @@ export class BlackjackService {
     const totalBet = totalStaked(state);
 
     if (payout) {
-      const credit = await this.wallet.apply(
-        {
+      const credit = await this.funds(tx, eventId, {
           userId,
           amount: payout,
           type: "payout",
@@ -312,9 +328,7 @@ export class BlackjackService {
           tableId: round.tableId,
           roundId: round.id,
           idempotencyKey: `${round.id}:payout`,
-        },
-        tx,
-      );
+        });
       balance = credit.balance;
     }
 

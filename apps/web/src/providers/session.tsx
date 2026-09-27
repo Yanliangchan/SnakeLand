@@ -7,7 +7,7 @@ import { authClient } from "@/lib/auth-client";
 
 type Status = "loading" | "signed-out" | "ready";
 
-interface SessionValue {
+export interface SessionValue {
   status: Status;
   me: MeDTO | null;
   /** Replace wallet state with an authoritative value returned by the server. */
@@ -88,4 +88,12 @@ export function useSession(): SessionValue {
   const ctx = useContext(SessionContext);
   if (!ctx) throw new Error("useSession must be used inside SessionProvider");
   return ctx;
+}
+
+/**
+ * Re-provide the session with some fields swapped for a subtree, e.g. an
+ * event stack shown (and updated) in place of the wallet balance.
+ */
+export function SessionOverride({ value, children }: { value: SessionValue; children: React.ReactNode }) {
+  return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }

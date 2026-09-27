@@ -8,6 +8,7 @@ import {
   PLINKO_ROWS_MIN,
 } from "@snakeland/shared";
 import type { Auth } from "../../auth";
+import { EVENT_HEADER, type EventService } from "../../events/service";
 import { CLIENT_SEED_RE } from "../../games/fair-seeds";
 import type { MinesService } from "../../games/mines/service";
 import type { PlinkoService } from "../../games/plinko/service";
@@ -20,13 +21,13 @@ const roundParams = z.object({ roundId: z.uuid() });
 
 export async function instantRoutes(
   app: FastifyInstance,
-  opts: { auth: Auth; mines: MinesService; plinko: PlinkoService },
+  opts: { auth: Auth; mines: MinesService; plinko: PlinkoService; events: EventService },
 ) {
   const r = app.withTypeProvider<ZodTypeProvider>();
   r.addHook("preHandler", requireUser(opts.auth));
 
   // ------------------------------------------------------------ Mines
-  r.post("/v1/mines/state", async (request) => opts.mines.state(request.user!.id));
+  r.post("/v1/mines/state", async (request) => opts.mines.state(request.user!.id, await opts.events.resolve(request.headers[EVENT_HEADER], request.user!.id, "mines")));
 
   r.post(
     "/v1/mines/rounds",
@@ -41,7 +42,7 @@ export async function instantRoutes(
         }),
       },
     },
-    async (request) => opts.mines.start(request.user!.id, request.body),
+    async (request) => opts.mines.start(request.user!.id, request.body, await opts.events.resolve(request.headers[EVENT_HEADER], request.user!.id, "mines")),
   );
 
   r.post(
@@ -78,6 +79,6 @@ export async function instantRoutes(
         }),
       },
     },
-    async (request) => opts.plinko.drop(request.user!.id, request.body),
+    async (request) => opts.plinko.drop(request.user!.id, request.body, await opts.events.resolve(request.headers[EVENT_HEADER], request.user!.id, "plinko")),
   );
 }

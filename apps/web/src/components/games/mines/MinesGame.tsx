@@ -21,6 +21,7 @@ import { Button, WinCelebration } from "@/components/ui";
 import { ApiError } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { minesApi } from "@/lib/instant-api";
+import { useEventPlay } from "@/components/events/EventPlay";
 import { fade, fadeUp, tap, tapTransition } from "@/lib/motion";
 import { recordRound } from "@/lib/session-stats";
 import { useSession } from "@/providers/session";
@@ -142,8 +143,12 @@ export function MinesGame() {
 
   const [round, setRound] = useState<MinesRoundDTO | null>(null);
   const [nextCommit, setNextCommit] = useState<string | null>(null);
-  const [size, setSize] = useState<number>(MINES_DEFAULT_SIZE);
-  const [mines, setMines] = useState(3);
+  const [chosenSize, setSize] = useState<number>(MINES_DEFAULT_SIZE);
+  const [chosenMines, setMines] = useState(3);
+  // A Mines race fixes the board for everyone.
+  const raceBoard = useEventPlay()?.event.mines ?? null;
+  const size = raceBoard?.size ?? chosenSize;
+  const mines = raceBoard?.mines ?? chosenMines;
   // A round in play fixes the board; otherwise the chosen size does.
   const boardSize = round?.size ?? size;
   const tiles = minesTiles(boardSize);
@@ -339,10 +344,10 @@ export function MinesGame() {
                     <ChipTray slip={slip} disabled={pending || !loaded} />
                   </PanelSection>
                   <PanelSection label="Board">
-                    <SizePicker value={size} onChange={changeSize} disabled={pending || !loaded} />
+                    <SizePicker value={size} onChange={changeSize} disabled={pending || !loaded || !!raceBoard} />
                   </PanelSection>
                   <PanelSection label="Mines">
-                    <MinesStepper value={mines} tiles={minesTiles(size)} onChange={setMines} disabled={pending || !loaded} />
+                    <MinesStepper value={mines} tiles={minesTiles(size)} onChange={setMines} disabled={pending || !loaded || !!raceBoard} />
                   </PanelSection>
                   <Button size="lg" block className="@4xl:w-44" onClick={start} loading={pending} disabled={!loaded || slip.amount < INSTANT_BET_LIMITS.min}>
                     Bet

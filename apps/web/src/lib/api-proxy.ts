@@ -7,7 +7,7 @@ import type { NextRequest } from "next/server";
  */
 
 const MAX_BODY = 64 * 1024;
-const REQUEST_HEADERS = ["accept", "accept-language", "content-type", "cookie", "origin", "referer", "user-agent"];
+const REQUEST_HEADERS = ["accept", "accept-language", "content-type", "cookie", "origin", "referer", "user-agent", "x-snk-event"];
 const DROP_RESPONSE = new Set(["connection", "keep-alive", "transfer-encoding", "content-length", "content-encoding", "set-cookie"]);
 const IP_RE = /^[0-9a-fA-F:.]{2,45}$/;
 

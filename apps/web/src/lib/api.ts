@@ -14,6 +14,15 @@ export class ApiError extends Error {
 }
 
 /**
+ * While a game is played inside an event, every request carries the event id
+ * so the server bets the event stack instead of the wallet.
+ */
+let eventHeader: string | null = null;
+export function setEventPlay(eventId: string | null) {
+  eventHeader = eventId;
+}
+
+/**
  * All API calls go through here: cookies are sent (credentials: "include"),
  * bodies are JSON only, and errors come back as a typed ApiError.
  */
@@ -22,7 +31,10 @@ export async function api<T>(path: string, init: { method?: "GET" | "POST"; body
     method: init.method ?? "GET",
     credentials: "include",
     cache: "no-store",
-    headers: init.body !== undefined ? { "content-type": "application/json" } : undefined,
+    headers: {
+      ...(init.body !== undefined ? { "content-type": "application/json" } : {}),
+      ...(eventHeader ? { "x-snk-event": eventHeader } : {}),
+    },
     body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
   });
 

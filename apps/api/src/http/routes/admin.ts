@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
-import { ADMIN_BALANCE_MODES, ANNOUNCEMENT_LEVELS, LAB_CATEGORIES, LAB_DIFFICULTIES, LAB_FLAG_MODES, LAB_MAX_REWARD, LIVE_ROOMS, MAX_BALANCE } from "@snakeland/shared";
+import { ADMIN_BALANCE_MODES, ANNOUNCEMENT_LEVELS, EVENT_LIMITS, EVENT_MODES, RACE_GAMES, LAB_CATEGORIES, LAB_DIFFICULTIES, LAB_FLAG_MODES, LAB_MAX_REWARD, LIVE_ROOMS, MAX_BALANCE } from "@snakeland/shared";
 import {
   ADMIN_MAX_FAILS_PER_IP,
   ADMIN_MAX_FAILS_TOTAL,
@@ -12,6 +12,7 @@ import {
 import type { AdminService } from "../../admin/service";
 import type { LabService } from "../../lab/service";
 import type { EngagementService } from "../../engagement/service";
+import type { EventService } from "../../events/service";
 import type { PurgeService } from "../../maintenance/purge";
 import type { WalletService } from "../../wallet/wallet-service";
 
@@ -44,6 +45,7 @@ export async function adminRoutes(
     purge: PurgeService;
     lab: LabService;
     engagement: EngagementService;
+    events: EventService;
   },
 ) {
   const r = app.withTypeProvider<ZodTypeProvider>();
@@ -304,5 +306,38 @@ export async function adminRoutes(
   r.post("/v1/admin/announcements/:id/delete", { schema: { params: z.object({ id: z.uuid() }) } }, async (request) => {
     await opts.engagement.removeAnnouncement(request.params.id);
     return { ok: true };
+  });
+
+  // ------------------------------------------------------------------ events
+  const L = EVENT_LIMITS;
+  r.get("/v1/admin/events", async () => ({ events: await opts.events.adminList() }));
+  r.post(
+    "/v1/admin/events",
+    {
+      schema: {
+        body: z.object({
+          title: z.string().trim().min(1).max(80),
+          mode: z.enum(EVENT_MODES),
+          game: z.enum(RACE_GAMES).nullable(),
+          startsAt: z.iso.datetime({ offset: true }),
+          minutes: z.number().int().min(L.minutes.min).max(L.minutes.max),
+          stack: z.number().int().min(L.stack.min).max(L.stack.max),
+          buyIn: z.number().int().min(0).max(L.buyIn.max),
+          topUp: z.number().int().min(0).max(L.topUp.max),
+          rounds: z.number().int().min(L.rounds.min).max(L.rounds.max).nullable(),
+          mines: z.object({ size: z.number().int().min(3).max(8), mines: z.number().int().min(1).max(63) }).nullable(),
+        }),
+      },
+    },
+    async (request) => {
+      const id = await opts.events.create(request.body);
+      await admin.audit("event_create", null, { id, title: request.body.title, mode: request.body.mode, topUp: request.body.topUp }, request.clientIp);
+      return { id };
+    },
+  );
+  r.post("/v1/admin/events/:id/cancel", { schema: { params: z.object({ id: z.uuid() }) } }, async (request) => {
+    const res = await opts.events.cancel(request.params.id);
+    await admin.audit("event_cancel", null, { id: request.params.id, ...res }, request.clientIp);
+    return res;
   });
 }

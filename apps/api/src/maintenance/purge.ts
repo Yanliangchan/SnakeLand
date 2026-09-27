@@ -55,6 +55,8 @@ export class PurgeService {
     // The ledger trigger only allows deletes inside a transaction that opts in.
     await tx.execute(sql`SET LOCAL snk.purge = 'on'`);
     const statements = [
+      sql`DELETE FROM event_crash_rounds WHERE user_id = ${userId}`,
+      sql`DELETE FROM event_entries WHERE user_id = ${userId}`,
       sql`DELETE FROM roulette_bets WHERE user_id = ${userId}`,
       sql`DELETE FROM crash_bets WHERE user_id = ${userId}`,
       sql`DELETE FROM blackjack_rounds WHERE user_id = ${userId}`,

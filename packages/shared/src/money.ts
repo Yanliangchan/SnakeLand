@@ -31,6 +31,9 @@ export const TRANSACTION_TYPES = [
   "tip",
   "rain",
   "lab_track",
+  "event_entry",
+  "event_prize",
+  "event_refund",
 ] as const;
 export type TransactionType = (typeof TRANSACTION_TYPES)[number];
 

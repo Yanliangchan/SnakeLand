@@ -14,3 +14,4 @@ export * from "./api";
 export * from "./admin";
 export * from "./lab";
 export * from "./engagement";
+export * from "./events";

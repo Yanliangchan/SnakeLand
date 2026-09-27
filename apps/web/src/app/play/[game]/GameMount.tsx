@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import type { GameId } from "@snakeland/shared";
 import { GameLoading } from "@/components/GameLoading";
 import { RequireSession } from "@/components/RequireSession";
+import { EventPlay } from "@/components/events/EventPlay";
 
 // Each game is its own chunk: opening Mines never downloads Roulette.
 const GAMES = {
@@ -42,11 +43,17 @@ const GAMES = {
   }),
 } satisfies Record<GameId, React.ComponentType>;
 
-export function GameMount({ game }: { game: GameId }) {
+export function GameMount({ game, eventId }: { game: GameId; eventId: string | null }) {
   const Game = GAMES[game];
   return (
     <RequireSession fallback={<GameLoading game={game} />}>
-      <Game />
+      {eventId ? (
+        <EventPlay eventId={eventId}>
+          <Game />
+        </EventPlay>
+      ) : (
+        <Game />
+      )}
     </RequireSession>
   );
 }

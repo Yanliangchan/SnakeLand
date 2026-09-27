@@ -20,7 +20,8 @@ import {
 } from "@snakeland/shared";
 import type { Db, Tx } from "../../db/client";
 import { baccaratRounds, baccaratShoes, baccaratTables } from "../../db/schema";
-import type { WalletService } from "../../wallet/wallet-service";
+import type { EventService, PlayCtx } from "../../events/service";
+import type { ApplyInput, WalletService } from "../../wallet/wallet-service";
 import { GameError } from "../errors";
 import { CLIENT_SEED_RE } from "../fair-seeds";
 import { dealCoup, type BaccaratHand } from "./engine";
@@ -99,7 +100,13 @@ export class BaccaratService {
   constructor(
     private readonly db: Db,
     private readonly wallet: WalletService,
+    private readonly events?: EventService,
   ) {}
+
+  /** Event tables bet against the event stack; everything else uses the wallet. */
+  private funds(tx: Tx, eventId: string | null, input: ApplyInput) {
+    return eventId ? this.events!.apply(tx, eventId, input) : this.wallet.apply(input, tx);
+  }
 
   private async createShoe(tx: Tx, tableId: string, userId: string) {
     const serverSeed = randomBytes(32).toString("hex");
@@ -117,24 +124,30 @@ export class BaccaratService {
     return shoe!;
   }
 
-  private async lockOpenTable(tx: Tx, userId: string) {
+  private async lockOpenTable(tx: Tx, userId: string, eventId: string | null) {
     const [t] = await tx
       .select()
       .from(baccaratTables)
-      .where(and(eq(baccaratTables.userId, userId), isNull(baccaratTables.closedAt)))
+      .where(
+        and(
+          eq(baccaratTables.userId, userId),
+          isNull(baccaratTables.closedAt),
+          eventId ? eq(baccaratTables.eventId, eventId) : isNull(baccaratTables.eventId),
+        ),
+      )
       .for("update");
     return t ?? null;
   }
 
-  private async openOrCreate(tx: Tx, userId: string) {
-    const existing = await this.lockOpenTable(tx, userId);
+  private async openOrCreate(tx: Tx, userId: string, eventId: string | null) {
+    const existing = await this.lockOpenTable(tx, userId, eventId);
     if (existing) return existing;
-    const [created] = await tx.insert(baccaratTables).values({ userId }).onConflictDoNothing().returning();
+    const [created] = await tx.insert(baccaratTables).values({ userId, eventId }).onConflictDoNothing().returning();
     if (created) {
       await this.createShoe(tx, created.id, userId);
       return created;
     }
-    const t = await this.lockOpenTable(tx, userId);
+    const t = await this.lockOpenTable(tx, userId, eventId);
     if (!t) throw new Error("failed to open a table");
     return t;
   }
@@ -171,13 +184,15 @@ export class BaccaratService {
     };
   }
 
-  async getTable(userId: string): Promise<BaccaratTableDTO> {
-    return this.db.transaction(async (tx) => this.tableDTO(tx, (await this.openOrCreate(tx, userId)).id));
+  async getTable(userId: string, ctx: PlayCtx | null = null): Promise<BaccaratTableDTO> {
+    const eventId = ctx?.eventId ?? null;
+    return this.db.transaction(async (tx) => this.tableDTO(tx, (await this.openOrCreate(tx, userId, eventId)).id));
   }
 
-  async nextTable(userId: string): Promise<BaccaratNextTableDTO> {
+  async nextTable(userId: string, ctx: PlayCtx | null = null): Promise<BaccaratNextTableDTO> {
+    const eventId = ctx?.eventId ?? null;
     return this.db.transaction(async (tx) => {
-      const current = await this.lockOpenTable(tx, userId);
+      const current = await this.lockOpenTable(tx, userId, eventId);
       let revealedShoe: RevealedShoeDTO | null = null;
       if (current) {
         const shoe = await this.liveShoe(tx, current.id);
@@ -189,7 +204,7 @@ export class BaccaratService {
         revealedShoe = revealedDTO(revealed!);
         await tx.update(baccaratTables).set({ closedAt: new Date() }).where(eq(baccaratTables.id, current.id));
       }
-      const table = await this.openOrCreate(tx, userId);
+      const table = await this.openOrCreate(tx, userId, eventId);
       return { table: await this.tableDTO(tx, table.id), revealedShoe };
     });
   }
@@ -197,7 +212,9 @@ export class BaccaratService {
   async play(
     userId: string,
     input: { tableId: string; bets: BaccaratBets; clientSeed?: string },
+    ctx: PlayCtx | null = null,
   ): Promise<BaccaratUpdateDTO> {
+    const eventId = ctx?.eventId ?? null;
     const totalBet = validateBets(input.bets);
     if (input.clientSeed !== undefined && !CLIENT_SEED_RE.test(input.clientSeed)) {
       throw new GameError(400, "INVALID_CLIENT_SEED", "Client seed must be 1–64 letters, digits, _ or -");
@@ -205,7 +222,7 @@ export class BaccaratService {
     const bets: BaccaratBets = Object.fromEntries(Object.entries(input.bets).filter(([, v]) => v && v > 0));
 
     return this.db.transaction(async (tx) => {
-      const table = await this.lockOpenTable(tx, userId);
+      const table = await this.lockOpenTable(tx, userId, eventId);
       if (!table || table.id !== input.tableId) throw new GameError(404, "TABLE_NOT_FOUND", "Table not found");
 
       let shoe = await this.liveShoe(tx, table.id);
@@ -219,8 +236,7 @@ export class BaccaratService {
       }
 
       const roundId = crypto.randomUUID();
-      const debit = await this.wallet.apply(
-        {
+      const debit = await this.funds(tx, eventId, {
           userId,
           amount: -totalBet,
           type: "bet",
@@ -229,9 +245,7 @@ export class BaccaratService {
           roundId,
           idempotencyKey: `${roundId}:bet`,
           meta: { bets },
-        },
-        tx,
-      );
+        });
 
       const cards: Card[] = shuffleShoe(orderedShoe(shoe.decks), shoe.serverSeed, shoe.clientSeed!);
       const shoeStart = shoe.position;
@@ -245,8 +259,7 @@ export class BaccaratService {
       const totalPayout = BACCARAT_BETS.reduce((s, b) => s + baccaratReturn(b, bets[b] ?? 0, hand), 0);
       let balance = debit.balance;
       if (totalPayout > 0) {
-        const credit = await this.wallet.apply(
-          {
+        const credit = await this.funds(tx, eventId, {
             userId,
             amount: totalPayout,
             type: "payout",
@@ -254,9 +267,7 @@ export class BaccaratService {
             tableId: table.id,
             roundId,
             idempotencyKey: `${roundId}:payout`,
-          },
-          tx,
-        );
+          });
         balance = credit.balance;
       }
 

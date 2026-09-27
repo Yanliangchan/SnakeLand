@@ -3,11 +3,12 @@
 import { AnimatePresence, motion } from "framer-motion";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { GAMES, GAME_IDS, type GameId } from "@snakeland/shared";
+import { FFA_GAMES, GAMES, GAME_IDS, type GameId } from "@snakeland/shared";
 import { GameGlyph } from "@/components/GameGlyph";
 import { GAME_ACCENT } from "@/lib/games-ui";
 import { cn } from "@/lib/cn";
 import { expoOut } from "@/lib/motion";
+import { useEventPlay } from "./events/EventPlay";
 
 /**
  * The game title doubles as a switcher: tap it (or press G) for every game,
@@ -16,6 +17,10 @@ import { expoOut } from "@/lib/motion";
 export function GameSwitcher({ game, title }: { game: GameId; title: string }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
+  // In an event, only its games are offered (and keep the event).
+  const event = useEventPlay()?.event ?? null;
+  const eventId = event?.id ?? null;
+  const games: readonly GameId[] = !event ? GAME_IDS : event.mode === "race" ? [game] : FFA_GAMES;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -59,10 +64,10 @@ export function GameSwitcher({ game, title }: { game: GameId; title: string }) {
             transition={{ duration: 0.18, ease: expoOut }}
             className="absolute left-0 top-full z-50 mt-2 grid w-[min(92vw,420px)] origin-top-left grid-cols-3 gap-1.5 rounded-[var(--radius-card)] bg-elevated p-2 shadow-[0_16px_48px_rgba(0,0,0,0.6)] hairline"
           >
-            {GAME_IDS.map((id) => (
+            {games.map((id) => (
               <Link
                 key={id}
-                href={`/play/${id}`}
+                href={eventId ? `/play/${id}?event=${eventId}` : `/play/${id}`}
                 role="menuitem"
                 onClick={() => setOpen(false)}
                 aria-current={id === game ? "page" : undefined}

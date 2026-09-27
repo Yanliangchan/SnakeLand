@@ -11,6 +11,7 @@ import { BalanceCounter } from "@/components/ui";
 import { expoOut, fadeUp, tap, tapTransition } from "@/lib/motion";
 import { useSession } from "@/providers/session";
 import { BonusSpin } from "./BonusSpin";
+import { LiveEvent } from "./LiveEvent";
 import { DailyClaim } from "./DailyClaim";
 import { WelcomeModal } from "./WelcomeModal";
 
@@ -64,22 +65,24 @@ export function Lobby() {
           <DailyClaim />
         </div>
 
+        <LiveEvent />
+
         <div className="mt-3">
           <BonusSpin />
         </div>
 
-        <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-3">
+        <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
           {[
+            { href: "/events", title: "Events", sub: "Races and free-for-alls" },
             { href: "/lab", title: "The Lab", sub: "Hacking puzzles for chips" },
             { href: "/leaderboard", title: "Leaderboards", sub: "Weekly titles · all-time rewards" },
             { href: "/profile", title: "Profile", sub: "Stats, titles and rewards" },
-          ].map((l, i) => (
+          ].map((l) => (
             <motion.div
               key={l.href}
               {...fadeUp}
               whileTap={tap}
               transition={tapTransition}
-              className={i === 0 ? "col-span-2 md:col-span-1" : undefined}
             >
               <Link
                 href={l.href}
