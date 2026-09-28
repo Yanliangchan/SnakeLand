@@ -80,10 +80,12 @@ export function createAuth({
       storage: "database",
       window: 60,
       max: 100,
+      // Limits are per client IP, and a whole household, campus or mobile
+      // carrier can share one. Sign-up has no rule of its own (only the
+      // general 100/min above), so a group on one network can all join.
       customRules: {
-        "/sign-in/email": { window: 60, max: 5 },
-        "/sign-up/email": { window: 60 * 60, max: 5 },
-        "/sign-in/anonymous": { window: 60 * 60, max: 10 },
+        "/sign-in/email": { window: 60, max: 20 },
+        "/sign-in/anonymous": { window: 15 * 60, max: 60 },
         "/change-password": { window: 60, max: 5 },
       },
     },
