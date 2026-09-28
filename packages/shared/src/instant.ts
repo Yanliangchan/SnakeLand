@@ -9,7 +9,7 @@ import type { Chips } from "./money";
  */
 
 export const HOUSE_EDGE_PERCENT = 1;
-export const INSTANT_BET_LIMITS = { min: 10, max: 10_000 } as const;
+export const INSTANT_BET_LIMITS = { min: 10, max: 100_000 } as const;
 
 export function applyX100(stake: Chips, x100: number): Chips {
   if (!Number.isSafeInteger(stake) || stake < 0) throw new RangeError("stake must be a non-negative integer");

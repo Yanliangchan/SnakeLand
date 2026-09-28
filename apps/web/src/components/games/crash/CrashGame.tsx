@@ -24,6 +24,7 @@ import { recordRound } from "@/lib/session-stats";
 import { useSession } from "@/providers/session";
 import { useSettings } from "@/providers/settings";
 import { ChipTray, StakeSummary, useChipSlip } from "../shared/ChipSlip";
+import { LivePlayers } from "../shared/LivePlayers";
 import { FairnessDialog, FairRow, VerifiedBadge } from "../shared/FairnessDialog";
 import { CrashStage, liveMultiplier } from "./CrashStage";
 
@@ -346,26 +347,24 @@ export function CrashGame() {
               </div>
             </div>
 
-            {state && state.bets.length > 0 && (
-              <PanelSection label={`Players · ${state.players}`} className="hidden lg:block">
-                <ul className="max-h-56 divide-y divide-hairline overflow-y-auto text-[13px]">
-                  {state.bets.map((b, i) => (
-                    <li key={`${b.name}-${i}`} className="flex items-center justify-between gap-2 py-1.5">
-                      <span className={cn("truncate", b.isMe && "text-fg")}>{b.isMe ? "You" : b.name}</span>
-                      <span className="flex shrink-0 items-center gap-2 tabular">
-                        <span className="text-fg-muted">{b.amount.toLocaleString()}</span>
-                        {b.cashoutX100 !== null ? (
-                          <span className="text-win">{(b.cashoutX100 / 100).toFixed(2)}×</span>
-                        ) : round?.phase === "crashed" ? (
-                          <span className="text-loss">bust</span>
-                        ) : (
-                          <span className="text-fg-disabled">—</span>
-                        )}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </PanelSection>
+            {state && (
+              <LivePlayers
+                players={state.players}
+                rows={state.bets.map((b, i) => ({
+                  key: `${b.name}-${i}`,
+                  name: b.name,
+                  isMe: !!b.isMe,
+                  amount: b.amount,
+                  status:
+                    b.cashoutX100 !== null ? (
+                      <span className="text-win">{(b.cashoutX100 / 100).toFixed(2)}×</span>
+                    ) : round?.phase === "crashed" ? (
+                      <span className="text-loss">bust</span>
+                    ) : (
+                      <span className="text-fg-disabled">in</span>
+                    ),
+                }))}
+              />
             )}
           </div>
         }

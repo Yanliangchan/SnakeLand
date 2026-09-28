@@ -8,6 +8,7 @@ import {
   ROULETTE_WHEELS,
   pocketColor,
   rouletteResult,
+  rouletteReturn,
   verifyCommit,
   type RouletteMyBetsDTO,
   type RouletteSettlementDTO,
@@ -25,6 +26,7 @@ import { recordRound } from "@/lib/session-stats";
 import { useSession } from "@/providers/session";
 import { FairnessDialog, FairRow, VerifiedBadge } from "../shared/FairnessDialog";
 import { ChipSelector, useSpotChips } from "../shared/SpotChips";
+import { LivePlayers } from "../shared/LivePlayers";
 import { BettingBoard } from "./BettingBoard";
 import { Wheel } from "./Wheel";
 
@@ -81,7 +83,9 @@ export function RouletteGame() {
   const [fairOpen, setFairOpen] = useState(false);
   const [lastRevealed, setLastRevealed] = useState<{ id: string; commit: string; serverSeed: string; result: number } | null>(null);
 
-  const spots = useSpotChips<string>(Math.min(ROULETTE_LIMITS.maxRoundTotal, balance + 0));
+  // Chips the server has already taken for this spin: they count toward the cap, not against the balance.
+  const [staked, setStaked] = useState(0);
+  const spots = useSpotChips<string>(Math.min(ROULETTE_LIMITS.maxRoundTotal, balance + staked));
   const { setAmounts, clear: clearSpots, amounts } = spots;
 
   const seenRound = useRef<string | null>(null);
@@ -108,6 +112,7 @@ export function RouletteGame() {
           const placed = amountsRef.current();
           if (Object.keys(placed).length) setLastBets(placed as Record<string, number>);
           clearSpots();
+          setStaked(0);
           setSettlement(null);
         }
       }
@@ -132,7 +137,9 @@ export function RouletteGame() {
       .then((s) => {
         if (cancelled) return;
         seenRound.current = s.wheel.round?.id ?? null;
-        setAmounts(s.myBets && s.wheel.round?.phase !== "result" ? toAmounts(s.myBets) : {});
+        const live = s.myBets && s.wheel.round?.phase !== "result";
+        setAmounts(live ? toAmounts(s.myBets!) : {});
+        setStaked(live ? s.myBets!.total : 0);
       })
       .catch(() => {});
     return () => {
@@ -152,12 +159,15 @@ export function RouletteGame() {
       try {
         const res = await rouletteApi.place({ wheelId, roundId, tableId, bets });
         setWallet({ balance: res.balance });
+        setStaked(res.myBets.total);
         if (queue.current.length === 0) setAmounts(toAmounts(res.myBets));
       } catch (e) {
         queue.current = [];
         setError(message(e));
         const s = await rouletteApi.state(wheelId).catch(() => null);
-        setAmounts(s?.myBets && s.wheel.round?.id === roundId ? toAmounts(s.myBets) : {});
+        const same = s?.myBets && s.wheel.round?.id === roundId;
+        setAmounts(same ? toAmounts(s.myBets!) : {});
+        setStaked(same ? s.myBets!.total : 0);
       }
     }
     sending.current = false;
@@ -168,7 +178,11 @@ export function RouletteGame() {
     setError(null);
     const value = spots.place(betId);
     if (value === null) {
-      setError(`Bets are capped at ${Math.min(ROULETTE_LIMITS.maxRoundTotal, balance + spots.total).toLocaleString()} per spin.`);
+      setError(
+        balance + staked < ROULETTE_LIMITS.maxRoundTotal
+          ? "Not enough chips for that."
+          : `Bets are capped at ${ROULETTE_LIMITS.maxRoundTotal.toLocaleString()} per spin.`,
+      );
       return;
     }
     queue.current.push([{ betId, amount: value }]);
@@ -191,6 +205,7 @@ export function RouletteGame() {
       const res = await rouletteApi.clear({ wheelId, roundId });
       setWallet({ balance: res.balance });
       clearSpots();
+      setStaked(0);
     } catch (e) {
       setError(message(e));
     }
@@ -204,6 +219,7 @@ export function RouletteGame() {
     setWheelIndex((i) => (i + 1) % ROULETTE_WHEELS.length);
     setTableId(crypto.randomUUID());
     clearSpots();
+    setStaked(0);
     setSettlement(null);
     setLastBets({});
     setError(null);
@@ -226,6 +242,36 @@ export function RouletteGame() {
     window.addEventListener("keydown", l);
     return () => window.removeEventListener("keydown", l);
   }, []);
+
+  // Everyone else's chips on this spin, grouped by spot for the board.
+  const myId = me?.user.id;
+  const table = wheel && round && wheel.round?.id === round.id ? wheel.table : [];
+  const others: Record<string, { amount: number; names: string[] }> = {};
+  for (const p of table) {
+    if (p.userId === myId) continue;
+    for (const b of p.bets) {
+      const o = (others[b.betId] ??= { amount: 0, names: [] });
+      o.amount += b.amount;
+      o.names.push(p.name);
+    }
+  }
+  const landed = round?.phase === "result" ? round.result : null;
+  const tableRows = table.map((p) => {
+    const back = landed === null ? null : p.bets.reduce((s, b) => s + rouletteReturn(b.betId, b.amount, landed), 0);
+    const netP = back === null ? 0 : back - p.total;
+    return {
+      key: p.userId,
+      name: p.name,
+      isMe: p.userId === myId,
+      amount: p.total,
+      status:
+        back === null ? (
+          <span className="text-fg-disabled">{p.bets.length === 1 ? "1 spot" : `${p.bets.length} spots`}</span>
+        ) : (
+          <span className={netP > 0 ? "text-win" : "text-loss"}>{netP > 0 ? `+${netP.toLocaleString()}` : "lost"}</span>
+        ),
+    };
+  });
 
   const mySettlement = settlement && settlement.roundId === round?.id ? settlement : null;
   const net = mySettlement ? mySettlement.payout - mySettlement.staked : 0;
@@ -275,6 +321,7 @@ export function RouletteGame() {
                 </div>
               </div>
             </div>
+            <LivePlayers rows={tableRows} players={wheel?.players ?? 0} />
             <PanelSection label="Recent numbers" className="hidden lg:block">
               <div className="flex flex-wrap gap-1.5" aria-label="Recent numbers">
                 <AnimatePresence initial={false} mode="popLayout">
@@ -367,6 +414,7 @@ export function RouletteGame() {
             disabled={!bettingOpen}
             winning={round?.phase === "result" ? round.result : null}
             winningBets={mySettlement?.winningBets ?? []}
+            others={others}
             onPlace={place}
           />
           </div>

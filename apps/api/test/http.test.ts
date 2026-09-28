@@ -176,7 +176,7 @@ describe("HTTP", () => {
     expect(table).not.toHaveProperty("shoe.serverSeed");
 
     expect((await post("/v1/blackjack/rounds", { tableId: table.id, bet: 5 })).statusCode).toBe(400);
-    expect((await post("/v1/blackjack/rounds", { tableId: table.id, bet: 10_001 })).statusCode).toBe(400);
+    expect((await post("/v1/blackjack/rounds", { tableId: table.id, bet: 100_001 })).statusCode).toBe(400);
     expect((await post("/v1/blackjack/rounds", { tableId: table.id, bet: 10.5 })).statusCode).toBe(400);
     expect((await post("/v1/blackjack/rounds", { tableId: table.id, bet: 10, clientSeed: "<script>" })).statusCode).toBe(
       400,

@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { ROULETTE_BETS } from "@snakeland/shared";
 import { cn } from "@/lib/cn";
 import { useMedia } from "@/lib/use-media";
+import { formatChip } from "@/components/ui";
 import { SpotStack, type SpotChipsState } from "../shared/SpotChips";
 import { HORIZONTAL, VERTICAL, type BoardItem } from "./layout";
 
@@ -22,6 +23,7 @@ export function BettingBoard({
   disabled,
   winning,
   winningBets,
+  others = {},
   onPlace,
 }: {
   spots: SpotChipsState<string>;
@@ -29,6 +31,8 @@ export function BettingBoard({
   /** The number that just came up, highlighted on the layout. */
   winning: number | null;
   winningBets: string[];
+  /** Other players' chips by spot: total and who. */
+  others?: Record<string, { amount: number; names: string[] }>;
   onPlace: (betId: string) => void;
 }) {
   const wide = useMedia("(min-width: 640px)");
@@ -118,6 +122,27 @@ export function BettingBoard({
             <span className={cn("absolute inset-[30%] rounded-full transition-colors", hover === it.betId && !disabled && "bg-fg/60")} />
           </button>
         ))}
+
+      {/* Other players' chips: a small marker in the spot's corner, so your own stack stays clear. */}
+      {board.items.map((it) => {
+        const o = others[it.betId];
+        if (!o) return null;
+        return (
+          <div
+            key={`others-${it.betId}`}
+            title={`${o.names.join(", ")}: ${o.amount.toLocaleString()}`}
+            className="pointer-events-none absolute z-[15] flex items-center gap-0.5 rounded-full bg-gold px-1 text-[9px] font-bold leading-[14px] text-black shadow-[0_1px_4px_rgba(0,0,0,0.5)] tabular sm:text-[10px]"
+            style={{
+              left: `${((it.x + it.w * (it.kind === "hot" ? 0.5 : 0.82)) / board.width) * 100}%`,
+              top: `${((it.y + it.h * (it.kind === "hot" ? 0.5 : 0.2)) / board.height) * 100}%`,
+              transform: "translate(-50%, -50%)",
+            }}
+          >
+            {o.names.length > 1 && <span className="opacity-70">{o.names.length}·</span>}
+            {formatChip(o.amount)}
+          </div>
+        );
+      })}
 
       {/* Placed chips, centred on their spot. */}
       {board.items.map((it) => {

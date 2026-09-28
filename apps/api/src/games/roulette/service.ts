@@ -2,15 +2,17 @@ import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import {
   ROULETTE_BETS,
   ROULETTE_LIMITS,
+  ROULETTE_TABLE_MAX_PLAYERS,
   isWheelId,
   rouletteRoom,
   type RouletteMyBetsDTO,
   type RouletteRoundDTO,
+  type RouletteTablePlayerDTO,
   type RouletteWheelDTO,
   type WheelId,
 } from "@snakeland/shared";
 import type { Db, DbOrTx } from "../../db/client";
-import { rouletteBets, rouletteRounds } from "../../db/schema";
+import { rouletteBets, rouletteRounds, users } from "../../db/schema";
 import type { Bus } from "../../realtime/bus";
 import type { LiveBusMessage } from "../../realtime/messages";
 import type { WalletService } from "../../wallet/wallet-service";
@@ -45,15 +47,33 @@ export class RouletteService {
     private readonly clock: () => Date = () => new Date(),
   ) {}
 
+  /** Who is at the wheel this spin and what they've bet, for everyone to see. */
   private async activity(q: DbOrTx, roundId: string) {
-    const [row] = await q
+    const rows = await q
       .select({
-        players: sql<number>`count(distinct ${rouletteBets.userId})::int`,
-        total: sql<string>`coalesce(sum(${rouletteBets.amount}), 0)`,
+        userId: rouletteBets.userId,
+        name: users.name,
+        betId: rouletteBets.betId,
+        amount: sql<string>`sum(${rouletteBets.amount})`,
       })
       .from(rouletteBets)
-      .where(eq(rouletteBets.roundId, roundId));
-    return { players: row?.players ?? 0, totalStaked: Number(row?.total ?? 0) };
+      .innerJoin(users, eq(users.id, rouletteBets.userId))
+      .where(eq(rouletteBets.roundId, roundId))
+      .groupBy(rouletteBets.userId, users.name, rouletteBets.betId);
+    const byUser = new Map<string, RouletteTablePlayerDTO>();
+    for (const r of rows) {
+      const amount = Number(r.amount);
+      const p = byUser.get(r.userId) ?? { userId: r.userId, name: r.name, total: 0, bets: [] };
+      p.total += amount;
+      p.bets.push({ betId: r.betId, amount });
+      byUser.set(r.userId, p);
+    }
+    const all = [...byUser.values()].sort((a, b) => b.total - a.total);
+    return {
+      players: all.length,
+      totalStaked: all.reduce((s, p) => s + p.total, 0),
+      table: all.slice(0, ROULETTE_TABLE_MAX_PLAYERS),
+    };
   }
 
   /** Current round (live, or the latest result) plus recent numbers for one wheel. */
@@ -69,7 +89,7 @@ export class RouletteService {
       .orderBy(desc(rouletteRounds.number))
       .limit(RECENT);
     const current = live ?? settled[0] ?? null;
-    const act = current ? await this.activity(this.db, current.id) : { players: 0, totalStaked: 0 };
+    const act = current ? await this.activity(this.db, current.id) : { players: 0, totalStaked: 0, table: [] };
     return {
       wheelId,
       round: current ? roundDTO(current) : null,

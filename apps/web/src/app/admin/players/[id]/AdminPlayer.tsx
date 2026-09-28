@@ -47,6 +47,9 @@ function Row({ k, v }: { k: string; v: React.ReactNode }) {
   );
 }
 
+/** One-click top-ups for players who've run dry. Logged like any balance change. */
+const CHARITY_AMOUNTS = [5_000, 10_000] as const;
+
 export function AdminPlayer({ id }: { id: string }) {
   const router = useRouter();
   const expired = useAdminExpired();
@@ -160,6 +163,27 @@ export function AdminPlayer({ id }: { id: string }) {
 
       <div className="mt-3 grid gap-3 lg:grid-cols-3">
         <Section title="Balance">
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <span className="text-[12px] text-fg-muted">Charity top-up</span>
+            {CHARITY_AMOUNTS.map((n) => (
+              <Button
+                key={n}
+                variant="secondary"
+                size="sm"
+                loading={busy === `charity-${n}`}
+                onClick={() =>
+                  void run(
+                    `charity-${n}`,
+                    () => adminApi.balance(id, { mode: "adjust", amount: n, note: "Charity top-up" }),
+                    `Charity top-up: +${chips(n)}`,
+                    true,
+                  )
+                }
+              >
+                {confirm === `charity-${n}` ? "Confirm?" : `+${chips(n)}`}
+              </Button>
+            ))}
+          </div>
           <Segmented
             value={mode}
             onChange={setMode}

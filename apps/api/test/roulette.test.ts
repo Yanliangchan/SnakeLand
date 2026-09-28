@@ -64,8 +64,8 @@ describe("Roulette dealer + bets", () => {
   it("takes bets, enforces limits, and refunds on clear", async () => {
     const userId = await createUser(db);
     // Enough chips to reach the per-spin cap.
-    await wallet.apply({ userId, amount: 20_000, type: "payout", game: "roulette", roundId: crypto.randomUUID() });
-    const TOP = STARTING_BALANCE + 20_000;
+    await wallet.apply({ userId, amount: 200_000, type: "payout", game: "roulette", roundId: crypto.randomUUID() });
+    const TOP = STARTING_BALANCE + 200_000;
     const r = await liveRound();
     const res = await roulette.place(userId, {
       wheelId: "w1",
@@ -80,6 +80,10 @@ describe("Roulette dealer + bets", () => {
     expect(res.balance).toBe(TOP - 160);
     expect(res.myBets.total).toBe(160);
     expect(res.myBets.bets.find((b) => b.betId === "red")?.amount).toBe(150);
+    // Everyone at the wheel sees who bet what.
+    const seen = (await roulette.wheelState("w1")).table.find((p) => p.userId === userId);
+    expect(seen?.total).toBe(160);
+    expect(seen?.bets.find((b) => b.betId === "red")?.amount).toBe(150);
 
     await expect(
       roulette.place(userId, { wheelId: "w1", roundId: r.id, tableId: TABLE, bets: [{ betId: "split:17-19", amount: 10 }] }),
@@ -88,7 +92,7 @@ describe("Roulette dealer + bets", () => {
       roulette.place(userId, { wheelId: "w1", roundId: r.id, tableId: TABLE, bets: [{ betId: "odd", amount: 5 }] }),
     ).rejects.toMatchObject({ code: "BET_OUT_OF_RANGE" });
     await expect(
-      roulette.place(userId, { wheelId: "w1", roundId: r.id, tableId: TABLE, bets: [{ betId: "odd", amount: 9_900 }] }),
+      roulette.place(userId, { wheelId: "w1", roundId: r.id, tableId: TABLE, bets: [{ betId: "odd", amount: 99_900 }] }),
     ).rejects.toMatchObject({ code: "BET_OUT_OF_RANGE" });
     expect((await wallet.getWallet(userId)).balance).toBe(TOP - 160); // rolled back
 

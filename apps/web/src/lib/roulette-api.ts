@@ -48,7 +48,7 @@ export function useRouletteSocket(
     } else if (msg.type === "activity") {
       setWheel((w) =>
         w && w.wheelId === msg.wheelId && w.round?.id === msg.roundId
-          ? { ...w, players: msg.players, totalStaked: msg.totalStaked }
+          ? { ...w, players: msg.players, totalStaked: msg.totalStaked, table: msg.table }
           : w,
       );
     } else if (msg.type === "settled") {

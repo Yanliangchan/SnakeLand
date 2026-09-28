@@ -6,7 +6,7 @@ export const BLACKJACK_RULES = {
   /** Reshuffle once this share of the shoe has been dealt (checked between rounds). */
   penetration: 0.75,
   minBet: 10,
-  maxBet: 10_000,
+  maxBet: 100_000,
   maxHands: 4,
   /** Blackjack pays 3:2 (floored to whole chips). */
   blackjackPayout: { num: 3, den: 2 },

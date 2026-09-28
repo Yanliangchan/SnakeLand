@@ -14,7 +14,7 @@ export const RED_NUMBERS: ReadonlySet<number> = new Set([
 export type PocketColor = "red" | "black" | "zero";
 export const pocketColor = (n: number): PocketColor => (n === 0 ? "zero" : RED_NUMBERS.has(n) ? "red" : "black");
 
-export const ROULETTE_LIMITS = { minBet: 10, maxRoundTotal: 10_000 } as const;
+export const ROULETTE_LIMITS = { minBet: 10, maxRoundTotal: 100_000 } as const;
 
 /** Live cycle: bets open, then the wheel spins to a result that stays up briefly. */
 export const ROULETTE_TIMING = { bettingMs: 15_000, spinMs: 7_000, resultMs: 3_000 } as const;
@@ -123,6 +123,17 @@ export interface RouletteRoundDTO {
   serverSeed: string | null;
 }
 
+/** One player's chips on the current spin, visible to everyone at the wheel. */
+export interface RouletteTablePlayerDTO {
+  userId: string;
+  name: string;
+  total: Chips;
+  bets: Array<{ betId: string; amount: Chips }>;
+}
+
+/** Most players listed per spin (everyone still counts toward the totals). */
+export const ROULETTE_TABLE_MAX_PLAYERS = 40;
+
 export interface RouletteWheelDTO {
   wheelId: WheelId;
   round: RouletteRoundDTO | null;
@@ -130,6 +141,8 @@ export interface RouletteWheelDTO {
   recent: number[];
   players: number;
   totalStaked: Chips;
+  /** Everyone's bets on the current spin, biggest stake first. */
+  table: RouletteTablePlayerDTO[];
 }
 
 export interface RouletteMyBetsDTO {
@@ -150,7 +163,7 @@ export interface RouletteSettlementDTO {
 
 export type RouletteServerMessage =
   | { type: "state"; wheel: RouletteWheelDTO; serverNow: string }
-  | { type: "activity"; wheelId: WheelId; roundId: string; players: number; totalStaked: Chips }
+  | { type: "activity"; wheelId: WheelId; roundId: string; players: number; totalStaked: Chips; table: RouletteTablePlayerDTO[] }
   | { type: "settled"; settlement: RouletteSettlementDTO }
   | { type: "pong"; serverNow: string }
   | { type: "error"; message: string };

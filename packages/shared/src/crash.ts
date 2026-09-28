@@ -12,7 +12,7 @@ import type { Chips } from "./money";
 
 export const CRASH_LIMITS = {
   minBet: 10,
-  maxBet: 10_000,
+  maxBet: 100_000,
   /** Auto cash-out range, in hundredths. */
   minAutoX100: 101,
   maxAutoX100: 1_000_000,
