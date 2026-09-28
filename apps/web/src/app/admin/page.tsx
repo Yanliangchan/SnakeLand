@@ -1,10 +1,10 @@
 import { AdminFrame } from "./AdminFrame";
-import { AdminPlayers } from "./AdminPlayers";
+import { AdminOverview } from "./AdminOverview";
 
 export default function AdminPage() {
   return (
     <AdminFrame>
-      <AdminPlayers />
+      <AdminOverview />
     </AdminFrame>
   );
 }

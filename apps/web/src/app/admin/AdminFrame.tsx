@@ -95,18 +95,15 @@ export function AdminFrame({ children }: { children: React.ReactNode }) {
       <div className="min-h-dvh">
         <header className="sticky top-0 z-20 border-b border-hairline bg-bg/80 backdrop-blur-xl">
           <div className="mx-auto flex h-14 max-w-[1440px] items-center justify-between px-3 sm:px-6">
-            <div className="flex items-center gap-3">
+            <div className="flex min-w-0 items-center gap-3">
               <Wordmark />
-              <span className="rounded-full px-2 py-0.5 text-[11px] font-medium text-fg-muted hairline">Admin</span>
-              <nav className="ml-2 flex gap-1 text-[13px]">
+              <span className="hidden rounded-full px-2 py-0.5 text-[11px] font-medium text-fg-muted hairline sm:inline">Admin</span>
+              <nav className="ml-1 flex min-w-0 gap-1 overflow-x-auto whitespace-nowrap text-[13px] [scrollbar-width:none] sm:ml-2">
                 {[
-                  {
-                    href: "/admin",
-                    label: "Players",
-                    active: !["/admin/lab", "/admin/engage", "/admin/events"].some((p) => pathname.startsWith(p)),
-                  },
-                  { href: "/admin/lab", label: "Lab", active: pathname.startsWith("/admin/lab") },
+                  { href: "/admin", label: "Overview", active: pathname === "/admin" },
+                  { href: "/admin/players", label: "Players", active: pathname.startsWith("/admin/players") },
                   { href: "/admin/events", label: "Events", active: pathname.startsWith("/admin/events") },
+                  { href: "/admin/lab", label: "Lab", active: pathname.startsWith("/admin/lab") },
                   { href: "/admin/engage", label: "Engage", active: pathname.startsWith("/admin/engage") },
                 ].map((l) => (
                   <Link
@@ -122,6 +119,7 @@ export function AdminFrame({ children }: { children: React.ReactNode }) {
             <Button
               variant="ghost"
               size="sm"
+              className="shrink-0 whitespace-nowrap"
               onClick={async () => {
                 await adminApi.logout().catch(() => {});
                 setState("login");

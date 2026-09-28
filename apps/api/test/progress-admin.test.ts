@@ -259,6 +259,22 @@ describe("Admin console + account routes", () => {
     expect((await post("/v1/wallet/daily-claim", undefined, p.cookie)).statusCode).toBe(200);
   });
 
+  it("serves an overview dashboard of players, play and chip flows", async () => {
+    expect((await get("/v1/admin/overview", "")).statusCode).toBe(401);
+    const o = (await get("/v1/admin/overview")).json();
+    expect(o.days).toHaveLength(14);
+    expect(o.days.at(-1).day).toBe(new Date().toISOString().slice(0, 10));
+    expect(o.totals.players).toBeGreaterThan(0);
+    // The players signed up above.
+    expect(o.totals.signups24h).toBeGreaterThanOrEqual(2);
+    expect(o.days.at(-1).signups).toBeGreaterThanOrEqual(2);
+    const flows = new Map(o.flows.map((f: { type: string; amount: number }) => [f.type, f.amount]));
+    expect(flows.get("daily_claim")).toBeGreaterThan(0);
+    expect(flows.has("admin_adjust")).toBe(true);
+    expect(o.audit.map((a: { action: string }) => a.action)).toContain("balance");
+    expect(Array.isArray(o.games)).toBe(true);
+  });
+
   it("suspends a player: signed out now and unable to sign back in", async () => {
     const p = await signUp("Suspect");
     await post(`/v1/admin/players/${p.id}/suspend`, { suspended: true });

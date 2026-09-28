@@ -14,6 +14,7 @@ import type { LabService } from "../../lab/service";
 import type { EngagementService } from "../../engagement/service";
 import type { EventService } from "../../events/service";
 import type { PurgeService } from "../../maintenance/purge";
+import type { Presence } from "../../realtime/presence";
 import type { WalletService } from "../../wallet/wallet-service";
 
 const COOKIE = "snk_admin";
@@ -46,6 +47,7 @@ export async function adminRoutes(
     lab: LabService;
     engagement: EngagementService;
     events: EventService;
+    presence: Presence;
   },
 ) {
   const r = app.withTypeProvider<ZodTypeProvider>();
@@ -112,6 +114,7 @@ export async function adminRoutes(
   r.get("/v1/admin/session", async () => ({ ok: true }));
 
   r.get("/v1/admin/stats", async () => admin.stats());
+  r.get("/v1/admin/overview", async () => admin.overview((await opts.presence.totals()) as Record<string, number>));
 
   r.get(
     "/v1/admin/players",

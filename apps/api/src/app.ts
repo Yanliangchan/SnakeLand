@@ -265,6 +265,7 @@ export async function buildApp({ env, db, redis }: { env: Env; db: Db; redis: Re
     lab,
     engagement,
     events,
+    presence,
     passwordHash: env.ADMIN_PASSWORD_HASH,
     secureCookies: env.NODE_ENV === "production",
     store: adminStore,

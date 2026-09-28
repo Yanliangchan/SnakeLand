@@ -4,6 +4,7 @@ import type {
   AdminLabChallengeInput,
   AdminPlayerDetailDTO,
   AdminPlayerPageDTO,
+  AdminOverviewDTO,
   AdminStatsDTO,
 } from "@snakeland/shared";
 import { api } from "./api";
@@ -17,6 +18,7 @@ export const adminApi = {
   login: (password: string) => api<{ ok: true }>("/v1/admin/login", { method: "POST", body: { password } }),
   logout: () => api<{ ok: true }>("/v1/admin/logout", { method: "POST", body: {} }),
   stats: () => api<AdminStatsDTO>("/v1/admin/stats"),
+  overview: () => api<AdminOverviewDTO>("/v1/admin/overview"),
   players: (q: { q?: string; filter: PlayerFilter; cursor?: string }) => {
     const params = new URLSearchParams({ filter: q.filter, limit: "50" });
     if (q.q) params.set("q", q.q);

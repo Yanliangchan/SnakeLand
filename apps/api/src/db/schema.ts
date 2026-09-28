@@ -166,6 +166,8 @@ export const transactions = pgTable(
   (t) => [
     index("transactions_user_created_idx").on(t.userId, t.createdAt.desc(), t.id.desc()),
     index("transactions_round_idx").on(t.roundId),
+    // Time-window reads for the admin overview.
+    index("transactions_created_idx").on(t.createdAt),
     uniqueIndex("transactions_user_idempotency_uq").on(t.userId, t.idempotencyKey),
     check("transactions_balance_after_non_negative", sql`${t.balanceAfter} >= 0`),
     check(

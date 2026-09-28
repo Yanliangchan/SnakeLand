@@ -127,7 +127,7 @@ export function AdminPlayer({ id }: { id: string }) {
 
   return (
     <main className="mx-auto w-full max-w-[1440px] px-3 pb-16 pt-6 sm:px-6">
-      <Link href="/admin" className="text-[13px] text-fg-muted hover:text-fg">
+      <Link href="/admin/players" className="text-[13px] text-fg-muted hover:text-fg">
         ← All players
       </Link>
 
@@ -302,7 +302,7 @@ export function AdminPlayer({ id }: { id: string }) {
                     "delete",
                     async () => {
                       await adminApi.deletePlayer(id);
-                      router.replace("/admin");
+                      router.replace("/admin/players");
                     },
                     "Player deleted",
                   );
