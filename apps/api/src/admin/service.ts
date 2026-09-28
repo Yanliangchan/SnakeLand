@@ -78,6 +78,38 @@ export class AdminService {
     };
   }
 
+  /**
+   * Add the same amount to every account at once (registered, not suspended;
+   * guests only when asked). Each credit carries the grant's id as its
+   * idempotency key, so retrying a grant never pays anyone twice. Accounts
+   * that would go past the balance ceiling are skipped.
+   */
+  async grantAll(input: { grantId: string; amount: number; includeGuests: boolean; note: string | null }) {
+    const ids = await this.db
+      .select({ id: users.id })
+      .from(users)
+      .where(and(isNull(users.suspendedAt), input.includeGuests ? undefined : eq(users.isAnonymous, false)));
+    let credited = 0;
+    let skipped = 0;
+    for (const { id } of ids) {
+      try {
+        const r = await this.wallet.apply({
+          userId: id,
+          amount: input.amount,
+          type: "admin_adjust",
+          idempotencyKey: `grant:${input.grantId}`,
+          meta: { by: "admin", grant: input.grantId, note: input.note },
+        });
+        if (r.applied) credited++;
+      } catch {
+        skipped++;
+      }
+    }
+    this.invalidate();
+    this.overviewCache = null;
+    return { credited, skipped };
+  }
+
   private overviewCache: { at: number; data: AdminOverviewDTO } | null = null;
 
   /**

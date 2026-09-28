@@ -10,6 +10,7 @@ import { ApiError } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { chips, dateShort, signedChips, timeLeft } from "@/lib/format";
 import { useAdminExpired } from "./AdminFrame";
+import { BulkActions } from "./BulkActions";
 
 function ago(iso: string | null) {
   if (!iso) return "—";
@@ -38,10 +39,12 @@ export function AdminPlayers() {
     else setError(e instanceof Error ? e.message : "Something went wrong");
   };
 
+  // Bumped after a bulk action so the stats and the list reload.
+  const [version, setVersion] = useState(0);
   useEffect(() => {
     adminApi.stats().then(setStats).catch(onError);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [version]);
 
   // Debounce typing into the search box.
   useEffect(() => {
@@ -66,7 +69,7 @@ export function AdminPlayers() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, filter]);
+  }, [query, filter, version]);
 
   async function more() {
     if (!cursor) return;
@@ -102,6 +105,8 @@ export function AdminPlayers() {
           </Card>
         ))}
       </div>
+
+      <BulkActions stats={stats} onDone={() => setVersion((v) => v + 1)} />
 
       <div className="mt-6 flex flex-wrap items-center gap-3">
         <input

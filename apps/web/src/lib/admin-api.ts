@@ -18,6 +18,9 @@ export const adminApi = {
   login: (password: string) => api<{ ok: true }>("/v1/admin/login", { method: "POST", body: { password } }),
   logout: () => api<{ ok: true }>("/v1/admin/logout", { method: "POST", body: {} }),
   stats: () => api<AdminStatsDTO>("/v1/admin/stats"),
+  wipeGuests: () => api<{ removed: number }>("/v1/admin/guests/wipe", { method: "POST", body: { confirm: "WIPE GUESTS" } }),
+  grantAll: (body: { grantId: string; amount: number; includeGuests: boolean; note?: string }) =>
+    api<{ credited: number; skipped: number }>("/v1/admin/grant-all", { method: "POST", body }),
   overview: () => api<AdminOverviewDTO>("/v1/admin/overview"),
   players: (q: { q?: string; filter: PlayerFilter; cursor?: string }) => {
     const params = new URLSearchParams({ filter: q.filter, limit: "50" });

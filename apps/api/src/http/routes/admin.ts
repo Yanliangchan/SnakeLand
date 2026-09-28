@@ -214,6 +214,42 @@ export async function adminRoutes(
     },
   );
 
+  // Give every account the same amount. The client sends a fresh grantId per
+  // grant; replaying the same id credits nobody twice.
+  r.post(
+    "/v1/admin/grant-all",
+    {
+      config: { rateLimit: { max: 5, timeWindow: "1 minute" } },
+      schema: {
+        body: z.object({
+          grantId: z.uuid(),
+          amount: z.number().int().min(1).max(1_000_000),
+          includeGuests: z.boolean(),
+          note: z.string().trim().max(200).optional(),
+        }),
+      },
+    },
+    async (request) => {
+      const { grantId, amount, includeGuests, note } = request.body;
+      const res = await admin.grantAll({ grantId, amount, includeGuests, note: note || null });
+      await admin.audit("grant_all", null, { grantId, amount, includeGuests, note: note || null, ...res }, request.clientIp);
+      return res;
+    },
+  );
+
+  // Permanent: every guest account and everything it owns. The body must spell
+  // out the confirmation so a stray or replayed request can't trigger it.
+  r.post(
+    "/v1/admin/guests/wipe",
+    { schema: { body: z.object({ confirm: z.literal("WIPE GUESTS") }) } },
+    async (request) => {
+      const removed = await opts.purge.purgeAllGuests();
+      admin.invalidate();
+      await admin.audit("wipe_guests", null, { removed }, request.clientIp);
+      return { removed };
+    },
+  );
+
   r.post(
     "/v1/admin/players/:id/chat-mute",
     { schema: { params: idParams, body: z.object({ muted: z.boolean() }) } },

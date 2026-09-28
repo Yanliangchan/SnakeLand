@@ -259,6 +259,17 @@ describe("Admin console + account routes", () => {
     expect((await post("/v1/wallet/daily-claim", undefined, p.cookie)).statusCode).toBe(200);
   });
 
+  it("guards the bulk actions: typed confirmation for the wipe, valid grant bodies", async () => {
+    // Without an admin session even a well-formed request is refused.
+    expect((await post("/v1/admin/guests/wipe", { confirm: "WIPE GUESTS" }, "")).statusCode).toBe(401);
+    expect((await post("/v1/admin/guests/wipe", {})).statusCode).toBe(400);
+    expect((await post("/v1/admin/guests/wipe", { confirm: "yes" })).statusCode).toBe(400);
+    expect((await post("/v1/admin/grant-all", { grantId: crypto.randomUUID(), amount: 100, includeGuests: false }, "")).statusCode).toBe(401);
+    expect((await post("/v1/admin/grant-all", { grantId: "x", amount: 100, includeGuests: false })).statusCode).toBe(400);
+    expect((await post("/v1/admin/grant-all", { grantId: crypto.randomUUID(), amount: 0, includeGuests: false })).statusCode).toBe(400);
+    expect((await post("/v1/admin/grant-all", { grantId: crypto.randomUUID(), amount: 2_000_000, includeGuests: false })).statusCode).toBe(400);
+  });
+
   it("serves an overview dashboard of players, play and chip flows", async () => {
     expect((await get("/v1/admin/overview", "")).statusCode).toBe(401);
     const o = (await get("/v1/admin/overview")).json();

@@ -80,6 +80,20 @@ export class PurgeService {
     for (const statement of statements) await tx.execute(statement);
   }
 
+  /** Admin: delete every guest account (registered players are never touched). Returns how many went. */
+  async purgeAllGuests(): Promise<number> {
+    let n = 0;
+    for (;;) {
+      const batch = await this.db.execute<{ id: string }>(sql`SELECT id FROM users WHERE is_anonymous = true LIMIT 200`);
+      if (batch.rows.length === 0) return n;
+      let removed = 0;
+      for (const { id } of batch.rows) if (await this.purgeGuest(id)) removed++;
+      n += removed;
+      // Nothing deletable left (e.g. a row refused): stop rather than loop forever.
+      if (removed === 0) return n;
+    }
+  }
+
   /**
    * Guests who left without signing out: nothing for 24 hours (no bet,
    * claim or session refresh). A browser can't reliably tell us a tab closed
