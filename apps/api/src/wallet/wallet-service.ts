@@ -4,7 +4,6 @@ import {
   DAILY_CLAIM_AMOUNT,
   DAILY_COOLDOWN_HOURS,
   MAX_BALANCE,
-  CASHBACK_DAILY_CAP,
   CASHBACK_PERCENT,
   RESCUE_AMOUNT,
   RESCUE_COOLDOWN_HOURS,
@@ -293,7 +292,7 @@ export class WalletService {
       .where(and(eq(transactions.userId, userId), gte(transactions.createdAt, since)));
     const lossToday = Math.max(0, -Number(row?.net ?? 0));
     const claimedToday = Number(row?.claimed ?? 0);
-    const target = Math.min(CASHBACK_DAILY_CAP, Math.floor((lossToday * CASHBACK_PERCENT) / 100));
+    const target = Math.floor((lossToday * CASHBACK_PERCENT) / 100);
     const lastRescue = row?.lastRescue ? new Date(row.lastRescue) : null;
     const rescueReadyAt = lastRescue ? new Date(lastRescue.getTime() + RESCUE_COOLDOWN_HOURS * 3_600_000) : null;
     const cooling = rescueReadyAt !== null && rescueReadyAt > now;
@@ -303,7 +302,6 @@ export class WalletService {
         available: Math.max(0, target - claimedToday),
         claimedToday,
         percent: CASHBACK_PERCENT,
-        cap: CASHBACK_DAILY_CAP,
         resetsAt: new Date(dayStart.getTime() + 86_400_000).toISOString(),
       },
       rescue: {

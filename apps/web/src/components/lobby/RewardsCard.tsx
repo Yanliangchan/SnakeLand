@@ -64,8 +64,8 @@ export function RewardsCard() {
           </p>
           <p className="truncate text-[12px] text-fg-muted">
             {cb.lossToday > 0
-              ? `Down ${chips(cb.lossToday)} today · up to ${chips(cb.cap)} a day`
-              : `Get ${cb.percent}% of today's losses back, up to ${chips(cb.cap)}`}
+              ? `Down ${chips(cb.lossToday)} today`
+              : `Get ${cb.percent}% of today's losses back`}
           </p>
         </div>
         <Button size="sm" onClick={() => void claim("cashback")} loading={busy === "cashback"} disabled={cb.available <= 0 || busy !== null}>

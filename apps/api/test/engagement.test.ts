@@ -1,7 +1,6 @@
 import { afterAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import {
-  CASHBACK_DAILY_CAP,
   CASHBACK_PERCENT,
   REFERRAL_REWARD,
   RESCUE_AMOUNT,
@@ -131,7 +130,7 @@ describe("cashback and rescue", () => {
   const pay = (w: WalletService, userId: string, amount: number) =>
     w.apply({ userId, amount, type: "payout", game: "mines", roundId: crypto.randomUUID() });
 
-  it("pays 50% of today's net losses, only once per loss, capped per day", async () => {
+  it("pays 50% of today's net losses, only once per loss, with no daily cap", async () => {
     // Ledger rows are stamped with the real time, so the clock starts at now.
     let now = new Date();
     const w = new WalletService(db, () => now);
@@ -150,10 +149,10 @@ describe("cashback and rescue", () => {
     expect(c.amount).toBe(500);
     // Claiming again pays nothing new; the cashback itself doesn't count as a win.
     await expect(w.claimCashback(id)).rejects.toMatchObject({ code: "NOTHING_TO_CLAIM" });
-    // More losses top it up, but never past the daily cap.
+    // More losses top it up, however large.
     await bet(w, id, 100_000);
     const big = await w.claimCashback(id);
-    expect(big.amount).toBe(CASHBACK_DAILY_CAP - 500);
+    expect(big.amount).toBe(50_000);
     expect((await w.rewardsState(id)).cashback.available).toBe(0);
 
     // A new UTC day starts fresh.
