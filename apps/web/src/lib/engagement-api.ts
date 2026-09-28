@@ -3,6 +3,7 @@ import type {
   AnnouncementDTO,
   LiveRoom,
   ReferralStateDTO,
+  RewardsStateDTO,
   SpinResultDTO,
   SpinStateDTO,
 } from "@snakeland/shared";
@@ -13,6 +14,9 @@ export const engagementApi = {
   spin: () => api<SpinResultDTO>("/v1/spin", { method: "POST", body: {} }),
   referral: () => api<ReferralStateDTO>("/v1/referral"),
   redeemReferral: (code: string) => api<{ ok: boolean; reward: number }>("/v1/referral/redeem", { method: "POST", body: { code } }),
+  rewards: () => api<RewardsStateDTO>("/v1/rewards"),
+  claimCashback: () => api<{ amount: number; balance: number; rewards: RewardsStateDTO }>("/v1/rewards/cashback", { method: "POST", body: {} }),
+  claimRescue: () => api<{ amount: number; balance: number; rewards: RewardsStateDTO }>("/v1/rewards/rescue", { method: "POST", body: {} }),
   announcement: () => api<{ announcement: AnnouncementDTO | null }>("/v1/announcement"),
   tip: (room: LiveRoom, toUserId: string, amount: number) =>
     api<{ balance: number }>(`/v1/live/chat/${encodeURIComponent(room)}/tip`, { method: "POST", body: { toUserId, amount } }),

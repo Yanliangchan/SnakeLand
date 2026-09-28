@@ -11,6 +11,7 @@ import { BalanceCounter } from "@/components/ui";
 import { expoOut, fadeUp, tap, tapTransition } from "@/lib/motion";
 import { useSession } from "@/providers/session";
 import { BonusSpin } from "./BonusSpin";
+import { RewardsCard } from "./RewardsCard";
 import { LiveEvent } from "./LiveEvent";
 import { DailyClaim } from "./DailyClaim";
 import { WelcomeModal } from "./WelcomeModal";
@@ -69,6 +70,10 @@ export function Lobby() {
 
         <div className="mt-3">
           <BonusSpin />
+        </div>
+
+        <div className="mt-3">
+          <RewardsCard />
         </div>
 
         <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">

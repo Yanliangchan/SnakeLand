@@ -173,7 +173,7 @@ export const transactions = pgTable(
     check(
       "transactions_amount_sign",
       sql`(${t.type} = 'bet' AND ${t.amount} < 0)
-        OR (${t.type}::text IN ('payout', 'refund', 'daily_claim', 'signup_bonus', 'lab_reward', 'bonus_spin', 'referral', 'rain', 'lab_track', 'event_prize', 'event_refund') AND ${t.amount} > 0)
+        OR (${t.type}::text IN ('payout', 'refund', 'daily_claim', 'signup_bonus', 'lab_reward', 'bonus_spin', 'referral', 'rain', 'lab_track', 'event_prize', 'event_refund', 'cashback', 'rescue') AND ${t.amount} > 0)
         OR (${t.type}::text = 'event_entry' AND ${t.amount} < 0)
         OR (${t.type}::text IN ('guest_merge', 'admin_adjust', 'tip') AND ${t.amount} <> 0)`,
     ),

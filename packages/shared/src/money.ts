@@ -34,6 +34,8 @@ export const TRANSACTION_TYPES = [
   "event_entry",
   "event_prize",
   "event_refund",
+  "cashback",
+  "rescue",
 ] as const;
 export type TransactionType = (typeof TRANSACTION_TYPES)[number];
 

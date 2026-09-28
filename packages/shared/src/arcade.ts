@@ -6,11 +6,11 @@ import type { FairRevealDTO } from "./instant";
 /**
  * Arcade games: Carrier (a plane collects boosts and must land on a carrier),
  * Tower (pick a safe door on each floor) and Crossing (hop across traffic).
- * All return 97% (a 3% edge) and use the per-round seed commit–reveal shared
+ * All return 99% (a 1% edge) and use the per-round seed commit–reveal shared
  * with Mines and Plinko. Multipliers are in hundredths.
  */
 
-export const ARCADE_RTP_PERCENT = 97;
+export const ARCADE_RTP_PERCENT = 99;
 
 // ---------------------------------------------------------------- Carrier
 

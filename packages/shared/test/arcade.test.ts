@@ -18,10 +18,10 @@ import {
 const seed = () => randomBytes(32).toString("hex");
 
 describe("Carrier", () => {
-  it("returns at most 97% in every mode, and close to it", () => {
+  it("returns at most 99% in every mode, and close to it", () => {
     for (const mode of CARRIER_MODES) {
       const rtp = carrierExactRtp(mode);
-      expect(rtp).toBeLessThanOrEqual(0.97);
+      expect(rtp).toBeLessThanOrEqual(0.99);
       expect(rtp).toBeGreaterThan(0.955);
       expect(carrierLandChance(mode)).toBeGreaterThan(0.2);
       expect(carrierLandChance(mode)).toBeLessThan(0.7);
@@ -56,10 +56,10 @@ describe("Tower", () => {
     }
   });
 
-  it("pays 97% ÷ survival odds", () => {
-    expect(ladderMultiplierX100("tower", "hard", 1)).toBe(194);
-    expect(ladderMultiplierX100("tower", "easy", 2)).toBe(172); // 97 × 16/9
-    expect(ladderMultiplierX100("tower", "expert", 8)).toBe(636_417);
+  it("pays 99% ÷ survival odds", () => {
+    expect(ladderMultiplierX100("tower", "hard", 1)).toBe(198);
+    expect(ladderMultiplierX100("tower", "easy", 2)).toBe(176); // 99 × 16/9
+    expect(ladderMultiplierX100("tower", "expert", 8)).toBe(649_539); // 99 × 3^8
     expect(ladderMultiplierX100("tower", "medium", 0)).toBe(100);
   });
 });
@@ -74,9 +74,9 @@ describe("Crossing", () => {
     }
   });
 
-  it("pays 97% ÷ survival odds", () => {
-    expect(ladderMultiplierX100("crossing", "daredevil", 1)).toBe(161); // 97 × 5/3
-    expect(ladderMultiplierX100("crossing", "easy", 1)).toBe(101);
+  it("pays 99% ÷ survival odds", () => {
+    expect(ladderMultiplierX100("crossing", "daredevil", 1)).toBe(165); // 99 × 5/3
+    expect(ladderMultiplierX100("crossing", "easy", 1)).toBe(103); // 99 × 25/24
   });
 });
 
@@ -88,30 +88,30 @@ describe("Penalty", () => {
       expect(k).toHaveLength(PENALTY_KICKS);
       for (const kick of k) expect(kick).toHaveLength(PENALTY_CONFIG[mode].covered);
     }
-    expect(ladderMultiplierX100("penalty", "hard", 3)).toBe(776); // 97 × 8
-    expect(ladderMultiplierX100("penalty", "easy", 1)).toBe(121); // 97 × 5/4
+    expect(ladderMultiplierX100("penalty", "hard", 3)).toBe(792); // 99 × 8
+    expect(ladderMultiplierX100("penalty", "easy", 1)).toBe(123); // 99 × 5/4
   });
 });
 
 describe("Hi-Lo", () => {
-  it("pays 97% ÷ the odds of each guess", async () => {
+  it("pays 99% ÷ the odds of each guess", async () => {
     const { hiloMultiplierX100, hiloNextX100, hiloWins } = await import("../src");
     // A King (rank 13): "lower or same" wins with every rank → no gain; "higher or same" only another King.
     const king = 12;
-    expect(hiloNextX100([king], [], king)).toEqual({ higher: 1261, lower: null });
-    expect(hiloMultiplierX100([king, 0], ["higher"])).toBe(1261);
-    expect(hiloMultiplierX100([6, 6], ["skip"])).toBe(97);
+    expect(hiloNextX100([king], [], king)).toEqual({ higher: 1287, lower: null });
+    expect(hiloMultiplierX100([king, 0], ["higher"])).toBe(1287);
+    expect(hiloMultiplierX100([6, 6], ["skip"])).toBe(99);
     expect(hiloWins(6, 6 + 13, "higher")).toBe(true); // same rank counts
     expect(hiloWins(6, 5, "higher")).toBe(false);
   });
 
-  it("returns 97% on any single guess", async () => {
+  it("returns 99% on any single guess", async () => {
     const { hiloWinningRanks, hiloMultiplierX100 } = await import("../src");
     for (let card = 0; card < 13; card++) {
       for (const c of ["higher", "lower"] as const) {
         const k = hiloWinningRanks(card, c);
         const ev = (k / 13) * (hiloMultiplierX100([card, 0], [c]) / 100);
-        expect(ev).toBeLessThanOrEqual(0.97 + 1e-9);
+        expect(ev).toBeLessThanOrEqual(0.99 + 1e-9);
         expect(ev).toBeGreaterThan(0.95);
       }
     }

@@ -25,6 +25,8 @@ const FLOW_LABEL: Partial<Record<TransactionType, string>> = {
   event_entry: "Event buy-ins",
   event_prize: "Event prizes",
   event_refund: "Event refunds",
+  cashback: "Cashback",
+  rescue: "Free top-ups",
 };
 
 const compact = (n: number) => {

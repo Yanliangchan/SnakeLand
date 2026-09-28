@@ -34,6 +34,18 @@ export async function engagementRoutes(app: FastifyInstance, opts: { auth: Auth;
     async (request) => opts.engagement.redeemReferral(request.user!, request.body.code),
   );
 
+  // Cashback on today's losses, and a top-up when nearly broke.
+  r.get("/v1/rewards", async (request, reply) => {
+    reply.header("cache-control", "no-store");
+    return opts.wallet.rewardsState(request.user!.id);
+  });
+  r.post("/v1/rewards/cashback", { config: { rateLimit: { max: 20, timeWindow: "1 minute" } } }, async (request) =>
+    opts.wallet.claimCashback(request.user!.id),
+  );
+  r.post("/v1/rewards/rescue", { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } }, async (request) =>
+    opts.wallet.claimRescue(request.user!.id),
+  );
+
   // The active announcement banner (or none).
   r.get("/v1/announcement", async (request, reply) => {
     reply.header("cache-control", "no-store");

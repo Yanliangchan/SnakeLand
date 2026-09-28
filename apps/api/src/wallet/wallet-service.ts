@@ -1,9 +1,15 @@
 import { randomInt } from "node:crypto";
-import { and, desc, eq, lt, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, lt, or, sql } from "drizzle-orm";
 import {
   DAILY_CLAIM_AMOUNT,
   DAILY_COOLDOWN_HOURS,
   MAX_BALANCE,
+  CASHBACK_DAILY_CAP,
+  CASHBACK_PERCENT,
+  RESCUE_AMOUNT,
+  RESCUE_COOLDOWN_HOURS,
+  RESCUE_THRESHOLD,
+  type RewardsStateDTO,
   SPIN_BASE,
   SPIN_COOLDOWN_HOURS,
   spinSegments,
@@ -261,6 +267,80 @@ export class WalletService {
       await tx.update(wallets).set({ lastSpinAt: now, spinStreak: streak }).where(eq(wallets.userId, userId));
       const result = await this.apply({ userId, amount, type: "bonus_spin", meta: { index, streak } }, tx);
       return { index, amount, balance: result.balance, streak, nextSpinAt: next.toISOString(), segments };
+    });
+  }
+
+  // ---------------------------------------------------------------- cashback & rescue
+
+  /** What the player can claim now: cashback on today's losses, and a rescue when broke. */
+  async rewardsState(userId: string): Promise<RewardsStateDTO> {
+    const { balance } = await this.getWallet(userId);
+    return this.rewardsFrom(this.db, userId, balance);
+  }
+
+  private async rewardsFrom(q: DbOrTx, userId: string, balance: number): Promise<RewardsStateDTO> {
+    const now = this.clock();
+    const dayStart = new Date(now);
+    dayStart.setUTCHours(0, 0, 0, 0);
+    const since = new Date(Math.min(dayStart.getTime(), now.getTime() - RESCUE_COOLDOWN_HOURS * 3_600_000));
+    const [row] = await q
+      .select({
+        net: sql<string>`coalesce(sum(${transactions.amount}) FILTER (WHERE ${transactions.type} IN ('bet', 'payout', 'refund') AND ${transactions.createdAt} >= ${dayStart}), 0)`,
+        claimed: sql<string>`coalesce(sum(${transactions.amount}) FILTER (WHERE ${transactions.type} = 'cashback' AND ${transactions.createdAt} >= ${dayStart}), 0)`,
+        lastRescue: sql<string | null>`max(${transactions.createdAt}) FILTER (WHERE ${transactions.type} = 'rescue')`,
+      })
+      .from(transactions)
+      .where(and(eq(transactions.userId, userId), gte(transactions.createdAt, since)));
+    const lossToday = Math.max(0, -Number(row?.net ?? 0));
+    const claimedToday = Number(row?.claimed ?? 0);
+    const target = Math.min(CASHBACK_DAILY_CAP, Math.floor((lossToday * CASHBACK_PERCENT) / 100));
+    const lastRescue = row?.lastRescue ? new Date(row.lastRescue) : null;
+    const rescueReadyAt = lastRescue ? new Date(lastRescue.getTime() + RESCUE_COOLDOWN_HOURS * 3_600_000) : null;
+    const cooling = rescueReadyAt !== null && rescueReadyAt > now;
+    return {
+      cashback: {
+        lossToday,
+        available: Math.max(0, target - claimedToday),
+        claimedToday,
+        percent: CASHBACK_PERCENT,
+        cap: CASHBACK_DAILY_CAP,
+        resetsAt: new Date(dayStart.getTime() + 86_400_000).toISOString(),
+      },
+      rescue: {
+        canClaim: balance < RESCUE_THRESHOLD && !cooling,
+        amount: RESCUE_AMOUNT,
+        threshold: RESCUE_THRESHOLD,
+        nextAt: cooling ? rescueReadyAt!.toISOString() : null,
+      },
+    };
+  }
+
+  /** Pay out today's cashback so far. Under the wallet lock, so it can't be claimed twice. */
+  async claimCashback(userId: string): Promise<{ amount: number; balance: number; rewards: RewardsStateDTO }> {
+    return this.db.transaction(async (tx) => {
+      const wallet = await this.lock(tx, userId);
+      const state = await this.rewardsFrom(tx, userId, wallet.balance);
+      const amount = state.cashback.available;
+      if (amount <= 0) throw new WalletError("NOTHING_TO_CLAIM", "No cashback to claim right now");
+      const r = await this.apply({ userId, amount, type: "cashback", meta: { lossToday: state.cashback.lossToday } }, tx);
+      return { amount, balance: r.balance, rewards: await this.rewardsFrom(tx, userId, r.balance) };
+    });
+  }
+
+  /** A free top-up for a player who's nearly out of chips, once per cooldown. */
+  async claimRescue(userId: string): Promise<{ amount: number; balance: number; rewards: RewardsStateDTO }> {
+    return this.db.transaction(async (tx) => {
+      const wallet = await this.lock(tx, userId);
+      const state = await this.rewardsFrom(tx, userId, wallet.balance);
+      if (!state.rescue.canClaim) {
+        throw new WalletError(
+          "RESCUE_NOT_READY",
+          wallet.balance >= RESCUE_THRESHOLD ? "Top-ups are for when you're nearly out of chips" : "Your next top-up isn't ready yet",
+          { nextAt: state.rescue.nextAt },
+        );
+      }
+      const r = await this.apply({ userId, amount: RESCUE_AMOUNT, type: "rescue" }, tx);
+      return { amount: RESCUE_AMOUNT, balance: r.balance, rewards: await this.rewardsFrom(tx, userId, r.balance) };
     });
   }
 

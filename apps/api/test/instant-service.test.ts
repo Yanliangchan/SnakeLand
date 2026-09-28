@@ -90,7 +90,7 @@ describe("Mines", () => {
     const { safe } = await layout(u.round.id);
     u = await mines.reveal(userId, u.round.id, { tile: safe[0]!, version: u.round.version });
     expect(u.round.status).toBe("cashed_out");
-    expect(u.round.payout).toBe(applyX100(10, 2425));
+    expect(u.round.payout).toBe(applyX100(10, minesMultiplierX100(25, 24, 1)));
   });
 
   it("plays any board size and validates mines against it", async () => {

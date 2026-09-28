@@ -26,8 +26,8 @@ export function formatX100(x100: number): string {
 /** Board side lengths players can choose (3×3 … 8×8). */
 export const MINES_SIZES = [3, 4, 5, 6, 7, 8] as const;
 export const MINES_DEFAULT_SIZE = 5;
-/** Mines carries a 3% house edge (97% return); Plinko keeps its own tables. */
-export const MINES_EDGE_PERCENT = 3;
+/** Mines carries a 1% house edge (99% return); Plinko keeps its own tables. */
+export const MINES_EDGE_PERCENT = 1;
 /** Multipliers are capped at 1,000,000× so payouts stay exact integers (and within the balance limit). */
 export const MINES_MAX_MULTIPLIER_X100 = 100_000_000;
 

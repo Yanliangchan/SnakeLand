@@ -63,17 +63,17 @@ describe("plinko path", () => {
 });
 
 describe("mines", () => {
-  it("prices the first pick at fair odds minus 3%", () => {
+  it("prices the first pick at fair odds minus 1%", () => {
     expect(minesMultiplierX100(25, 1, 0)).toBe(100);
-    expect(minesMultiplierX100(25, 1, 1)).toBe(101); // 25/24 * 0.97 = 1.0104
-    expect(minesMultiplierX100(25, 3, 1)).toBe(110); // 25/22 * 0.97 = 1.1022
-    expect(minesMultiplierX100(25, 24, 1)).toBe(2425); // 25 * 0.97
-    expect(minesMultiplierX100(9, 8, 1)).toBe(873); // 9 * 0.97
+    expect(minesMultiplierX100(25, 1, 1)).toBe(103); // 25/24 * 0.99 = 1.0312
+    expect(minesMultiplierX100(25, 3, 1)).toBe(112); // 25/22 * 0.99 = 1.125
+    expect(minesMultiplierX100(25, 24, 1)).toBe(2475); // 25 * 0.99
+    expect(minesMultiplierX100(9, 8, 1)).toBe(891); // 9 * 0.99
     expect(() => minesMultiplierX100(25, 25, 1)).toThrow();
     expect(() => minesMultiplierX100(10, 1, 1)).toThrow(); // not a square board
   });
 
-  it("returns at most 97% in expectation on every board, mine count and pick count", () => {
+  it("returns at most 99% in expectation on every board, mine count and pick count", () => {
     for (const size of MINES_SIZES) {
       const tiles = minesTiles(size);
       for (let m = 1; m < tiles; m++) {
@@ -84,7 +84,7 @@ describe("mines", () => {
           prev = x;
           const survive = binom(tiles - m, k) / binom(tiles, k);
           const ev = (survive * x) / 100;
-          expect(ev).toBeLessThanOrEqual(0.97 + 1e-9);
+          expect(ev).toBeLessThanOrEqual(0.99 + 1e-9);
         }
       }
     }

@@ -1,6 +1,15 @@
 import { afterAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
-import { REFERRAL_REWARD, SPIN_COOLDOWN_HOURS, STARTING_BALANCE, spinMultiplier } from "@snakeland/shared";
+import {
+  CASHBACK_DAILY_CAP,
+  CASHBACK_PERCENT,
+  REFERRAL_REWARD,
+  RESCUE_AMOUNT,
+  RESCUE_COOLDOWN_HOURS,
+  SPIN_COOLDOWN_HOURS,
+  STARTING_BALANCE,
+  spinMultiplier,
+} from "@snakeland/shared";
 import { users } from "../src/db/schema";
 import { ChatService, MemoryChatStore } from "../src/chat/service";
 import { EngagementService } from "../src/engagement/service";
@@ -113,5 +122,65 @@ describe("announcements", () => {
     expect(list.find((x) => x.id === a)!.active).toBe(false);
     await eng.removeAnnouncement(b);
     expect(await eng.active()).toBeNull();
+  });
+});
+
+describe("cashback and rescue", () => {
+  const bet = (w: WalletService, userId: string, amount: number) =>
+    w.apply({ userId, amount: -amount, type: "bet", game: "mines", roundId: crypto.randomUUID() });
+  const pay = (w: WalletService, userId: string, amount: number) =>
+    w.apply({ userId, amount, type: "payout", game: "mines", roundId: crypto.randomUUID() });
+
+  it("pays 50% of today's net losses, only once per loss, capped per day", async () => {
+    // Ledger rows are stamped with the real time, so the clock starts at now.
+    let now = new Date();
+    const w = new WalletService(db, () => now);
+    const id = await createUser(db);
+    await w.apply({ userId: id, amount: 200_000, type: "admin_adjust" });
+    expect((await w.rewardsState(id)).cashback.available).toBe(0);
+    await expect(w.claimCashback(id)).rejects.toMatchObject({ code: "NOTHING_TO_CLAIM" });
+
+    // Lose 1,000 net (bet 1,500, win back 500): 500 back.
+    await bet(w, id, 1_500);
+    await pay(w, id, 500);
+    const s = await w.rewardsState(id);
+    expect(s.cashback.lossToday).toBe(1_000);
+    expect(s.cashback.available).toBe(CASHBACK_PERCENT * 10);
+    const c = await w.claimCashback(id);
+    expect(c.amount).toBe(500);
+    // Claiming again pays nothing new; the cashback itself doesn't count as a win.
+    await expect(w.claimCashback(id)).rejects.toMatchObject({ code: "NOTHING_TO_CLAIM" });
+    // More losses top it up, but never past the daily cap.
+    await bet(w, id, 100_000);
+    const big = await w.claimCashback(id);
+    expect(big.amount).toBe(CASHBACK_DAILY_CAP - 500);
+    expect((await w.rewardsState(id)).cashback.available).toBe(0);
+
+    // A new UTC day starts fresh.
+    const tomorrow = new Date(now);
+    tomorrow.setUTCHours(24, 0, 1, 0);
+    now = tomorrow;
+    const fresh = await w.rewardsState(id);
+    expect(fresh.cashback.lossToday).toBe(0);
+    expect(fresh.cashback.claimedToday).toBe(0);
+    expect(await w.ledgerSum(id)).toBe((await w.getWallet(id)).balance);
+  });
+
+  it("tops up a nearly-broke player once per cooldown", async () => {
+    let now = new Date();
+    const w = new WalletService(db, () => now);
+    const id = await createUser(db);
+    await expect(w.claimRescue(id)).rejects.toMatchObject({ code: "RESCUE_NOT_READY" }); // 1,000 isn't broke
+    await bet(w, id, STARTING_BALANCE - 50);
+    expect((await w.rewardsState(id)).rescue.canClaim).toBe(true);
+    const r = await w.claimRescue(id);
+    expect(r.balance).toBe(50 + RESCUE_AMOUNT);
+    await bet(w, id, r.balance - 10);
+    const st = await w.rewardsState(id);
+    expect(st.rescue.canClaim).toBe(false);
+    expect(st.rescue.nextAt).not.toBeNull();
+    await expect(w.claimRescue(id)).rejects.toMatchObject({ code: "RESCUE_NOT_READY" });
+    now = new Date(now.getTime() + RESCUE_COOLDOWN_HOURS * 3_600_000 + 1000);
+    expect((await w.claimRescue(id)).balance).toBe(10 + RESCUE_AMOUNT);
   });
 });

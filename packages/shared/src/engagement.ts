@@ -76,3 +76,38 @@ export interface AdminAnnouncementDTO extends AnnouncementDTO {
   active: boolean;
   createdAt: string;
 }
+
+// ---------------------------------------------------------------- cashback & rescue
+
+/**
+ * Cashback: claim back a share of today's net game losses (UTC day), capped
+ * per day. Game results only: bets, payouts and refunds; bonuses don't count.
+ */
+export const CASHBACK_PERCENT = 50;
+export const CASHBACK_DAILY_CAP: Chips = 25_000;
+
+/** Rescue: a free top-up when a player is nearly out of chips. */
+export const RESCUE_THRESHOLD: Chips = 100;
+export const RESCUE_AMOUNT: Chips = 1_000;
+export const RESCUE_COOLDOWN_HOURS = 4;
+
+export interface RewardsStateDTO {
+  cashback: {
+    /** Net game loss so far today (0 when up on the day). */
+    lossToday: Chips;
+    /** What a claim would pay right now. */
+    available: Chips;
+    claimedToday: Chips;
+    percent: number;
+    cap: Chips;
+    /** When the day (and the cap) resets. */
+    resetsAt: string;
+  };
+  rescue: {
+    canClaim: boolean;
+    amount: Chips;
+    threshold: Chips;
+    /** Next time a rescue can be claimed, if on cooldown. */
+    nextAt: string | null;
+  };
+}

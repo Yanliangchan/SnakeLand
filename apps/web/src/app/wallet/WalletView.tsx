@@ -28,6 +28,8 @@ const LABEL: Record<TransactionType, string> = {
   event_entry: "Event buy-in",
   event_prize: "Event prize",
   event_refund: "Event refund",
+  cashback: "Cashback",
+  rescue: "Free top-up",
 };
 
 const timeFmt = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });

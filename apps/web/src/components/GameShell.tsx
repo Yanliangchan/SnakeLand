@@ -9,7 +9,10 @@ import { GAME_ACCENT } from "@/lib/games-ui";
 import { tap, tableSwitch, tapTransition } from "@/lib/motion";
 import { useSession } from "@/providers/session";
 import { GameSwitcher } from "./GameSwitcher";
-import { EventStrip } from "./events/EventPlay";
+import { EventStrip, useEventPlay } from "./events/EventPlay";
+import { RESCUE_THRESHOLD } from "@snakeland/shared";
+import { engagementApi } from "@/lib/engagement-api";
+import { ApiError } from "@/lib/api";
 import { GameHelpSheet, GameTour } from "./games/shared/GameHelp";
 import { SessionStatsBar } from "./games/shared/SessionStatsBar";
 
@@ -40,6 +43,36 @@ export interface GameShellProps {
  * control panel sits on the left from `lg` up and at the bottom below that.
  * The stage is a size container, so games scale with `cqw`/`cqh` units.
  */
+/** A one-tap free top-up when the player is nearly out of chips (not during event play). */
+function TopUp() {
+  const { me, setWallet } = useSession();
+  const inEvent = useEventPlay() !== null;
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  if (!me || inEvent || me.wallet.balance >= RESCUE_THRESHOLD) return null;
+  return (
+    <button
+      onClick={async () => {
+        setBusy(true);
+        try {
+          const r = await engagementApi.claimRescue();
+          setWallet({ balance: r.balance });
+          setNote(null);
+        } catch (e) {
+          setNote(e instanceof ApiError ? e.message : "Couldn't top up");
+        } finally {
+          setBusy(false);
+        }
+      }}
+      disabled={busy}
+      title={note ?? "Free top-up"}
+      className="h-9 shrink-0 rounded-[var(--radius-ui)] bg-gold px-3 text-[12px] font-semibold text-black disabled:opacity-50"
+    >
+      {note ? "Later" : "Top up"}
+    </button>
+  );
+}
+
 export function GameShell({ game, title, tableLabel, tableId, onNextTable, headerExtra, controls, children }: GameShellProps) {
   const { me } = useSession();
   const [helpOpen, setHelpOpen] = useState(false);
@@ -111,6 +144,7 @@ export function GameShell({ game, title, tableLabel, tableId, onNextTable, heade
                 <span className="hidden sm:inline">Next table</span>
               </motion.button>
             )}
+            <TopUp />
             {me && (
               <>
                 <div className="flex h-9 items-center gap-1.5 rounded-[var(--radius-ui)] bg-surface px-3 hairline">

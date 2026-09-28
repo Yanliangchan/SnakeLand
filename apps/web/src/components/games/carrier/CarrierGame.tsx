@@ -3,6 +3,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  ARCADE_RTP_PERCENT,
   CARRIER_MODES,
   INSTANT_BET_LIMITS,
   carrierFlight,
@@ -295,7 +296,7 @@ export function CarrierGame() {
               <PanelSection label="Speed" className="@4xl:w-72">
                 <OptionPills options={CARRIER_MODES} value={mode} onChange={setMode} label={(m) => MODE_LABEL[m]} disabled={inAir} />
                 <p className="mt-1.5 text-[12px] text-fg-muted tabular">
-                  {Math.round(carrierLandChance(mode) * 100)}% landing chance · 97% return
+                  {Math.round(carrierLandChance(mode) * 100)}% landing chance · {ARCADE_RTP_PERCENT}% return
                 </p>
               </PanelSection>
               <Button size="lg" className="@4xl:w-44" onClick={fly} disabled={inAir || slip.amount < INSTANT_BET_LIMITS.min}>
