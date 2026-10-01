@@ -57,6 +57,14 @@ const EnvSchema = z.object({
     .string()
     .regex(/^(mailto:|https:\/\/)/)
     .optional(),
+  /**
+   * Optional second factor for /admin: a base32 TOTP secret (`admin:hash --totp`).
+   * When set, admin sign-in also needs the current authenticator code.
+   */
+  ADMIN_TOTP_SECRET: z
+    .string()
+    .regex(/^[A-Z2-7]{32,64}$/, "ADMIN_TOTP_SECRET must be base32 (from admin:hash --totp)")
+    .optional(),
   ADMIN_PASSWORD_HASH: z
     .string()
     .regex(/^scrypt\$[A-Za-z0-9+/=]+\$[A-Za-z0-9+/=]+$/, "ADMIN_PASSWORD_HASH must come from the admin:hash script")

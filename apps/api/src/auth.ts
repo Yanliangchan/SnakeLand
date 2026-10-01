@@ -1,7 +1,7 @@
 import { betterAuth } from "better-auth";
 import { APIError, createAuthMiddleware, getSessionFromCtx } from "better-auth/api";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { anonymous } from "better-auth/plugins";
+import { anonymous } from "better-auth/plugins/anonymous";
 import { eq } from "drizzle-orm";
 import type { Db } from "./db/client";
 import { accounts, rateLimits, sessions, users, verifications } from "./db/schema";
@@ -67,6 +67,8 @@ export function createAuth({
       expiresIn: 60 * 60 * 24 * 30, // 30 days
       updateAge: 60 * 60 * 24, // refresh expiry at most once a day
       freshAge: 60 * 60, // sensitive actions (password change) need a login within the hour
+      // No cookieCache on purpose: every request checks the session row, so a
+      // suspension or "sign out everywhere" takes effect immediately.
     },
 
     user: {

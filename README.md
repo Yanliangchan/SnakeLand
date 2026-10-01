@@ -284,6 +284,11 @@ disables the console (404). Sessions are random tokens kept hashed in Redis for 
 `SameSite=Strict` cookie scoped to `/v1/admin`. Logins are rate-limited and lock for 15 minutes after 5 failures
 from one IP (or 30 overall). Every action lands in `admin_audit`.
 
+**Second factor (recommended).** Set `ADMIN_TOTP_SECRET` and sign-in also needs the current 6-digit code from an
+authenticator app (RFC 6238; a code works once, ±30 s clock drift). Generate both values together:
+`printf '%s' 'your password' | pnpm --filter @snakeland/api admin:hash -- --totp`, then add the printed
+`otpauth://` URI to your authenticator app. Unset keeps password-only sign-in.
+
 Admins can search players, view full profiles and recent transactions, add/remove/set chips (as `admin_adjust`
 ledger rows), reset the daily claim, rename, suspend (signs out everywhere and blocks sign-in), sign a player out
 everywhere, and permanently delete a player (typed-name confirmation; the audit log keeps who it was).
@@ -328,7 +333,7 @@ the pnpm workspace resolves:
 | | API | Web |
 | --- | --- | --- |
 | Build command | `pnpm --filter @snakeland/api build` | `pnpm --filter @snakeland/web build` |
-| Start command | `node --max-old-space-size=192 apps/api/dist/server.js` | `node --max-old-space-size=256 apps/web/node_modules/next/dist/bin/next start apps/web` |
+| Start command | `node --no-warnings=ExperimentalWarning --max-old-space-size=128 --max-semi-space-size=1 --optimize-for-size apps/api/dist/server.js` | `node --max-old-space-size=128 --max-semi-space-size=1 --optimize-for-size apps/web/.next/standalone/apps/web/server.js` |
 | Pre-deploy | `pnpm --filter @snakeland/api db:migrate:prod` | — |
 | Healthcheck | `/healthz` | — |
 | Watch paths | `apps/api/**`, `packages/shared/**`, `pnpm-lock.yaml` | `apps/web/**`, `packages/shared/**`, `pnpm-lock.yaml` |
@@ -348,6 +353,8 @@ ADMIN_PASSWORD_HASH=<output of pnpm --filter @snakeland/api admin:hash>   # enab
 VAPID_PUBLIC_KEY=<npx web-push generate-vapid-keys>   # enables push notifications
 VAPID_PRIVATE_KEY=<...>
 VAPID_SUBJECT=mailto:<you>
+ADMIN_TOTP_SECRET=<from admin:hash --totp>            # optional: authenticator code for /admin
+MALLOC_ARENA_MAX=2                                    # fewer glibc arenas: lower RSS
 ```
 
 **Web variables** (`NEXT_PUBLIC_*` is read at build time)
@@ -356,7 +363,14 @@ VAPID_SUBJECT=mailto:<you>
 PORT=8080
 API_INTERNAL_URL=http://${{api.RAILWAY_PRIVATE_DOMAIN}}:8080
 NEXT_PUBLIC_WS_URL=wss://<api domain>
+HOSTNAME=::                     # standalone server: listen on IPv4 and IPv6
+MALLOC_ARENA_MAX=2
 ```
+
+The web app builds as a Next.js **standalone** server (`output: "standalone"`); `pnpm build` also copies
+`.next/static` and `public` into it. Memory flags: `--max-semi-space-size=1` keeps V8's young generation small
+(the largest single saving), `--optimize-for-size` trades a little CPU for memory, and `MALLOC_ARENA_MAX=2`
+stops glibc from reserving an arena per thread.
 
 The API listens on `::` (IPv4 and IPv6, as required by the private network) and falls back to IPv4 where IPv6
 isn't available. To use your own domain later, put both services on it and point the variables at the new

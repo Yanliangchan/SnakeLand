@@ -23,6 +23,9 @@ export function useAdminExpired() {
 
 function Login({ onDone }: { onDone: () => void }) {
   const [password, setPassword] = useState("");
+  const [code, setCode] = useState("");
+  // Shown once the server says a second factor is required.
+  const [needCode, setNeedCode] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   return (
@@ -34,10 +37,13 @@ function Login({ onDone }: { onDone: () => void }) {
             setPending(true);
             setError(null);
             try {
-              await adminApi.login(password);
+              await adminApi.login(password, needCode ? code : undefined);
               setPassword("");
+              setCode("");
               onDone();
             } catch (err) {
+              if (err instanceof ApiError && err.code === "ADMIN_BAD_CODE") setNeedCode(true);
+              setCode("");
               setError(err instanceof ApiError ? err.message : "Couldn't sign in");
             } finally {
               setPending(false);
@@ -59,7 +65,18 @@ function Login({ onDone }: { onDone: () => void }) {
             onChange={(e) => setPassword(e.target.value)}
             error={error}
           />
-          <Button type="submit" loading={pending} disabled={!password}>
+          {needCode && (
+            <Field
+              label="Authenticator code"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              autoFocus
+              maxLength={6}
+              value={code}
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+            />
+          )}
+          <Button type="submit" loading={pending} disabled={!password || (needCode && code.length !== 6)}>
             Sign in
           </Button>
         </form>

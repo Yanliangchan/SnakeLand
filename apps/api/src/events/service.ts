@@ -331,6 +331,38 @@ export class EventService {
 
   // ---------------------------------------------------------------- settlement
 
+  private timer: NodeJS.Timeout | null = null;
+
+  /**
+   * Sleep until the next unsettled event ends, then settle it. With no
+   * events there is no timer at all (no idle Postgres polling). Waits are
+   * capped at an hour so events created on another instance are still
+   * picked up; reads settle lazily as well.
+   */
+  async armTimer(): Promise<void> {
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = null;
+    const [next] = await this.db
+      .select({ endsAt: sql<Date | null>`min(${events.endsAt})` })
+      .from(events)
+      .where(inArray(events.status, ["scheduled", "live"]));
+    if (!next?.endsAt) return;
+    const wait = Math.min(Math.max(new Date(next.endsAt).getTime() - this.clock().getTime() + 1000, 1000), 3_600_000);
+    this.timer = setTimeout(() => {
+      this.timer = null;
+      void this.settleDue()
+        .catch(() => {})
+        .then(() => this.armTimer())
+        .catch(() => {});
+    }, wait);
+    this.timer.unref();
+  }
+
+  stopTimer() {
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = null;
+  }
+
   /** Settle every event whose window has closed. Safe to call from any instance. */
   async settleDue(): Promise<number> {
     const due = await this.db
@@ -443,6 +475,7 @@ export class EventService {
         seedHash: hashServerSeed(seed),
       })
       .returning({ id: events.id });
+    void this.armTimer().catch(() => {});
     return row!.id;
   }
 

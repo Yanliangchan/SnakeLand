@@ -51,8 +51,10 @@ export function useLiveSocket(room: LiveRoom, onMessage: (msg: Message) => void)
 
     const schedule = () => {
       if (stopped || paused) return;
-      retry = Math.min(retry + 1, 5);
-      timer = setTimeout(() => void connect(), 500 * 2 ** retry);
+      // Exponential backoff up to ~1 min, with jitter so tabs don't reconnect in lockstep.
+      retry = Math.min(retry + 1, 7);
+      const base = 500 * 2 ** retry;
+      timer = setTimeout(() => void connect(), base / 2 + Math.random() * (base / 2));
     };
 
     const connect = async () => {
@@ -72,7 +74,8 @@ export function useLiveSocket(room: LiveRoom, onMessage: (msg: Message) => void)
         retry = 0;
         setConnected(true);
         ws.send(JSON.stringify({ type: "join", room: roomRef.current }));
-        pinger = setInterval(() => ws.readyState === WebSocket.OPEN && ws.send(JSON.stringify({ type: "ping" })), 20_000);
+        // The server's own WebSocket heartbeat keeps the link alive; this only resyncs the clock.
+        pinger = setInterval(() => ws.readyState === WebSocket.OPEN && ws.send(JSON.stringify({ type: "ping" })), 60_000);
       };
       ws.onmessage = (event) => {
         let msg: Message;

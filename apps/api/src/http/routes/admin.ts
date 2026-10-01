@@ -10,6 +10,7 @@ import {
   type AdminStore,
 } from "../../admin/auth";
 import type { AdminService } from "../../admin/service";
+import { verifyTotp } from "../../admin/totp";
 import type { LabService } from "../../lab/service";
 import type { EngagementService } from "../../engagement/service";
 import type { EventService } from "../../events/service";
@@ -39,6 +40,7 @@ export async function adminRoutes(
   app: FastifyInstance,
   opts: {
     passwordHash: string | undefined;
+    totpSecret?: string;
     secureCookies: boolean;
     store: AdminStore;
     admin: AdminService;
@@ -80,7 +82,7 @@ export async function adminRoutes(
     "/v1/admin/login",
     {
       config: { rateLimit: { max: 5, timeWindow: "1 minute" } },
-      schema: { body: z.object({ password: z.string().min(1).max(200) }) },
+      schema: { body: z.object({ password: z.string().min(1).max(200), code: z.string().max(10).optional() }) },
     },
     async (request, reply) => {
       const ip = request.clientIp || request.ip;
@@ -95,6 +97,15 @@ export async function adminRoutes(
         await store.recordFailure(ip);
         await admin.audit("login_failed", null, null, ip);
         return reply.status(401).send({ error: { code: "ADMIN_BAD_PASSWORD", message: "Wrong password" } });
+      }
+      // Second factor, when configured: a current, not-yet-used authenticator code.
+      if (opts.totpSecret) {
+        const step = verifyTotp(opts.totpSecret, request.body.code?.trim() ?? "");
+        if (step === null || !(await store.useTotpStep(step))) {
+          await store.recordFailure(ip);
+          await admin.audit("login_failed", null, { reason: "totp" }, ip);
+          return reply.status(401).send({ error: { code: "ADMIN_BAD_CODE", message: "Enter the current code from your authenticator app" } });
+        }
       }
       await store.clearFailures(ip);
       const token = await store.createSession();

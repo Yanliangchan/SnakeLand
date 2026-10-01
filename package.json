@@ -13,5 +13,10 @@
     "test": "pnpm -r test",
     "db:generate": "pnpm --filter @snakeland/api db:generate",
     "db:migrate": "pnpm --filter @snakeland/api db:migrate"
+  },
+  "pnpm": {
+    "overrides": {
+      "esbuild@<0.28.1": "^0.28.2"
+    }
   }
 }

@@ -42,6 +42,8 @@ export interface AdminStore {
   failures(ip: string): Promise<{ ip: number; total: number }>;
   recordFailure(ip: string): Promise<void>;
   clearFailures(ip: string): Promise<void>;
+  /** Mark a TOTP time step as used; false if it already was (replay). */
+  useTotpStep(step: number): Promise<boolean>;
 }
 
 export class MemoryAdminStore implements AdminStore {
@@ -79,6 +81,14 @@ export class MemoryAdminStore implements AdminStore {
   async clearFailures(ip: string) {
     this.fails.delete(`ip:${ip}`);
   }
+  private usedSteps = new Map<number, number>();
+  async useTotpStep(step: number) {
+    const now = Date.now();
+    for (const [k, until] of this.usedSteps) if (until < now) this.usedSteps.delete(k);
+    if (this.usedSteps.has(step)) return false;
+    this.usedSteps.set(step, now + 120_000);
+    return true;
+  }
 }
 
 export class RedisAdminStore implements AdminStore {
@@ -109,5 +119,8 @@ export class RedisAdminStore implements AdminStore {
   }
   async clearFailures(ip: string) {
     await this.redis.del(`${this.prefix}f:${ip}`);
+  }
+  async useTotpStep(step: number) {
+    return (await this.redis.set(`${this.prefix}totp:${step}`, "1", "EX", 120, "NX")) === "OK";
   }
 }

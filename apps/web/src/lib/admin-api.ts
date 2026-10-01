@@ -15,7 +15,8 @@ const p = (id: string) => `/v1/admin/players/${encodeURIComponent(id)}`;
 
 export const adminApi = {
   session: () => api<{ ok: true }>("/v1/admin/session"),
-  login: (password: string) => api<{ ok: true }>("/v1/admin/login", { method: "POST", body: { password } }),
+  login: (password: string, code?: string) =>
+    api<{ ok: true }>("/v1/admin/login", { method: "POST", body: code ? { password, code } : { password } }),
   logout: () => api<{ ok: true }>("/v1/admin/logout", { method: "POST", body: {} }),
   stats: () => api<AdminStatsDTO>("/v1/admin/stats"),
   wipeGuests: () => api<{ removed: number }>("/v1/admin/guests/wipe", { method: "POST", body: { confirm: "WIPE GUESTS" } }),

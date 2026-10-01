@@ -91,6 +91,8 @@ export async function buildApp({ env, db, redis }: { env: Env; db: Db; redis: Re
     // Trust exactly N proxy hops (Railway edge = 1) so request.ip is the real client.
     trustProxy: (_address: string, hop: number) => hop < env.TRUST_PROXY_HOPS,
     bodyLimit: 16 * 1024,
+    // Drop clients that trickle a request in (slowloris). WebSockets are unaffected once upgraded.
+    requestTimeout: 30_000,
     // Don't let clients pick request ids that end up in our logs.
     genReqId: () => crypto.randomUUID(),
   });
@@ -159,15 +161,12 @@ export async function buildApp({ env, db, redis }: { env: Env; db: Db; redis: Re
   await lab.ensureStarterPack();
   const adminStore = redis ? new RedisAdminStore(redis) : new MemoryAdminStore();
 
-  // Settle events whose window has closed. Settlement is idempotent under a row
-  // lock, so every instance can run this; reads also settle lazily.
-  const eventTimer = setInterval(() => {
-    events.settleDue().catch((err) => app.log.error({ err }, "event settlement failed"));
-  }, 15_000);
-  eventTimer.unref();
+  // Settle events when their window closes. Settlement is idempotent under a
+  // row lock, so every instance can run this; reads also settle lazily.
+  if (env.NODE_ENV !== "test") void events.armTimer().catch((err) => app.log.error({ err }, "event timer failed"));
 
   app.addHook("onClose", async () => {
-    clearInterval(eventTimer);
+    events.stopTimer();
     await maintenance.stop();
     await dealer.stop();
     await crashDealer.stop();
@@ -269,6 +268,7 @@ export async function buildApp({ env, db, redis }: { env: Env; db: Db; redis: Re
     events,
     presence,
     passwordHash: env.ADMIN_PASSWORD_HASH,
+    totpSecret: env.ADMIN_TOTP_SECRET,
     secureCookies: env.NODE_ENV === "production",
     store: adminStore,
     admin,
