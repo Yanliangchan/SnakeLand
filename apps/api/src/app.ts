@@ -176,7 +176,12 @@ export async function buildApp({ env, db, redis }: { env: Env; db: Db; redis: Re
 
   await app.register(helmet, {
     // JSON-only API: nothing should ever render or frame it.
-    contentSecurityPolicy: { directives: { defaultSrc: ["'none'"], frameAncestors: ["'none'"] } },
+    // Only our own directives: Helmet's defaults allow scripts, styles and fonts a JSON API never needs.
+    contentSecurityPolicy: {
+      useDefaults: false,
+      directives: { defaultSrc: ["'none'"], baseUri: ["'none'"], formAction: ["'none'"], frameAncestors: ["'none'"] },
+    },
+    frameguard: { action: "deny" },
     crossOriginResourcePolicy: { policy: "same-site" },
     hsts: env.NODE_ENV === "production" ? { maxAge: 63072000, includeSubDomains: true, preload: false } : false,
   });
