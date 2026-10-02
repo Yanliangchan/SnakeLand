@@ -333,13 +333,13 @@ the pnpm workspace resolves:
 | | API | Web |
 | --- | --- | --- |
 | Build command | `pnpm --filter @snakeland/api build` | `pnpm --filter @snakeland/web build` |
-| Start command | `node --no-warnings=ExperimentalWarning --max-old-space-size=128 --max-semi-space-size=1 --optimize-for-size apps/api/dist/server.js` | `node --max-old-space-size=96 --max-semi-space-size=1 --optimize-for-size --lite-mode apps/web/.next/standalone/apps/web/server.js` |
+| Start command | `node --no-warnings=ExperimentalWarning --max-old-space-size=128 --max-semi-space-size=1 --optimize-for-size apps/api/dist/server.js` | `node --max-old-space-size=96 --max-semi-space-size=1 --optimize-for-size apps/web/.next/standalone/apps/web/server.js` |
 | Pre-deploy | `pnpm --filter @snakeland/api db:migrate:prod` | — |
 | Healthcheck | `/healthz` | — |
 | Watch paths | `apps/api/**`, `packages/shared/**`, `pnpm-lock.yaml` | `apps/web/**`, `packages/shared/**`, `pnpm-lock.yaml` |
 
-The web runs with `--lite-mode` (no optimizing JIT): it cuts about 18 MB of idle memory for roughly 4 ms more per
-page render. The API keeps the JIT because provably-fair hashing runs in pure JavaScript.
+Don't add `--lite-mode` or `--jitless` to either start command: they disable WebAssembly, which Node's built-in
+`fetch` needs, so the web's API proxy fails.
 
 **API variables**
 

@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "next dev --port 3000",
     "build": "next build && node scripts/standalone-assets.mjs",
-    "start": "node --max-old-space-size=96 --max-semi-space-size=1 --optimize-for-size --lite-mode .next/standalone/apps/web/server.js",
+    "start": "node --max-old-space-size=96 --max-semi-space-size=1 --optimize-for-size .next/standalone/apps/web/server.js",
     "typecheck": "tsc --noEmit",
     "lint": "eslint ."
   },
