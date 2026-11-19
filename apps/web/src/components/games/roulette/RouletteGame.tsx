@@ -24,11 +24,20 @@ import { useMedia } from "@/lib/use-media";
 import { fade, fadeUp } from "@/lib/motion";
 import { recordRound } from "@/lib/session-stats";
 import { useSession } from "@/providers/session";
+import { useSettings } from "@/providers/settings";
 import { FairnessDialog, FairRow, VerifiedBadge } from "../shared/FairnessDialog";
 import { ChipSelector, useSpotChips } from "../shared/SpotChips";
 import { LivePlayers } from "../shared/LivePlayers";
 import { BettingBoard } from "./BettingBoard";
-import { Wheel } from "./Wheel";
+import { Wheel, useWheelMotion } from "./Wheel";
+
+/** How long the landed number stays in the spotlight before the board comes back. */
+const SPOTLIGHT_HOLD_MS = 2200;
+const SPIN_GLOW = [
+  "0 0 0 0 rgba(255,255,255,0)",
+  "0 0 60px 6px rgba(255,255,255,0.14)",
+  "0 0 0 0 rgba(255,255,255,0)",
+];
 
 // Chat is secondary: load it after the game itself.
 const LiveChat = dynamic(() => import("../shared/LiveChat").then((m) => m.LiveChat), { ssr: false });
@@ -125,9 +134,24 @@ export function RouletteGame() {
   const round = wheel?.round ?? null;
   const betting = round?.phase === "betting";
   const closesIn = useSecondsLeft(betting ? round.closesAt : null, offsetMs);
-  const spinLeft = useSecondsLeft(round?.phase === "spinning" ? round.spinEndsAt : null, offsetMs);
   const bettingOpen = betting && closesIn > 400;
   const roundId = round?.id ?? null;
+  const phase = round?.phase ?? null;
+
+  // The spin plays out in a spotlight: the wheel grows over the board, the ball
+  // lands, the number pops, then the wheel shrinks back for the next bets.
+  const { play, reducedMotion } = useSettings();
+  const wheelMotion = useWheelMotion();
+  const onTick = useCallback(() => play("tick"), [play]);
+  const [spotlightRound, setSpotlightRound] = useState<string | null>(null);
+  const [spotlightDone, setSpotlightDone] = useState<string | null>(null);
+  if (phase === "spinning" && roundId && !reducedMotion && spotlightRound !== roundId) setSpotlightRound(roundId);
+  const spotlight = !!roundId && phase !== "betting" && spotlightRound === roundId && spotlightDone !== roundId;
+  useEffect(() => {
+    if (!spotlight || phase !== "result" || !roundId) return;
+    const t = setTimeout(() => setSpotlightDone(roundId), SPOTLIGHT_HOLD_MS);
+    return () => clearTimeout(t);
+  }, [spotlight, phase, roundId]);
 
   // Restore my bets for the live round on load / wheel switch.
   useEffect(() => {
@@ -285,6 +309,19 @@ export function RouletteGame() {
         ? "No more bets"
         : null;
 
+  const wheelEl = (
+    <Wheel
+      motion={wheelMotion}
+      roundId={roundId}
+      result={round && round.phase !== "betting" ? round.result : null}
+      spinning={phase === "spinning"}
+      spinEndsAt={round?.spinEndsAt ?? null}
+      clockOffset={offsetMs}
+      landed={phase === "result"}
+      onTick={onTick}
+    />
+  );
+
   return (
     <>
       <GameShell
@@ -340,13 +377,63 @@ export function RouletteGame() {
         }
       >
         <div
-          className="flex h-full flex-col gap-3 p-3 sm:gap-4 sm:p-4"
+          className="relative flex h-full flex-col gap-3 p-3 sm:gap-4 sm:p-4"
           // The wheel row takes whatever height the board doesn't need (the board is width-limited on wide screens).
           style={{ "--top": `clamp(112px, 100cqh - 44px - (100cqw - 24px) / ${wide ? "2.947" : "0.576"}, 240px)` } as React.CSSProperties}
         >
+          <AnimatePresence>
+            {spotlight && (
+              <motion.div
+                key="spotlight"
+                className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 rounded-[inherit] bg-bg/80 backdrop-blur-[3px]"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.35 }}
+              >
+                <motion.div
+                  layoutId="roulette-wheel"
+                  className="aspect-square h-[min(72cqh,90cqw)] rounded-full"
+                  transition={{ type: "spring", stiffness: 140, damping: 20 }}
+                >
+                  {/* The glow breathes while the wheel turns. */}
+                  <motion.div
+                    className="size-full rounded-full"
+                    animate={phase === "spinning" ? { boxShadow: SPIN_GLOW } : { boxShadow: SPIN_GLOW[0] }}
+                    transition={phase === "spinning" ? { duration: 1.6, repeat: Infinity, ease: "easeInOut" } : { duration: 0.4 }}
+                  >
+                    {wheelEl}
+                  </motion.div>
+                </motion.div>
+                <div className="grid h-9 place-items-center">
+                  <AnimatePresence mode="wait">
+                    {phase === "result" ? (
+                      mySettlement ? (
+                        <motion.div key="net" {...fadeUp}>
+                          <WinCelebration trigger={mySettlement.roundId} multiplier={mySettlement.staked ? mySettlement.payout / mySettlement.staked : 0}>
+                            <span className={cn("text-[28px] font-semibold tracking-[-0.02em] tabular", net > 0 ? "text-win" : net < 0 ? "text-loss" : "text-fg-muted")}>
+                              {net === 0 ? "Even" : `${net > 0 ? "+" : "−"}${Math.abs(net).toLocaleString()}`}
+                            </span>
+                          </WinCelebration>
+                        </motion.div>
+                      ) : null
+                    ) : (
+                      <motion.p key="spinning" {...fade} className="text-[13px] font-semibold uppercase tracking-[0.18em] text-fg-muted">
+                        No more bets
+                      </motion.p>
+                    )}
+                  </AnimatePresence>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
           <div className="flex shrink-0 items-center gap-3 sm:gap-5" style={{ height: "var(--top)" }}>
             <div className="aspect-square h-full shrink-0">
-              <Wheel result={round && round.phase !== "betting" ? round.result : null} spinning={round?.phase === "spinning"} spinMsLeft={spinLeft} />
+              {!spotlight && (
+                <motion.div layoutId="roulette-wheel" className="size-full" transition={{ type: "spring", stiffness: 140, damping: 20 }}>
+                  {wheelEl}
+                </motion.div>
+              )}
             </div>
             <div className="flex h-full min-w-0 flex-1 flex-col justify-between gap-1.5 overflow-hidden rounded-[12px] bg-bg/60 p-3 hairline sm:gap-2 sm:p-4">
               <div className="flex items-center justify-between gap-2">
