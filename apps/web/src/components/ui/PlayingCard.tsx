@@ -1,6 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
+import { useState } from "react";
 import { rankOf, suitOf, type Card } from "@snakeland/shared";
 import { cn } from "@/lib/cn";
 import { cardVariants, expoOut } from "@/lib/motion";
@@ -11,21 +12,44 @@ const SUIT_NAME = { S: "spades", H: "hearts", D: "diamonds", C: "clubs" } as con
 const RANK_LABEL: Record<string, string> = { T: "10", J: "J", Q: "Q", K: "K", A: "A" };
 const RANK_NAME: Record<string, string> = { A: "Ace", T: "10", J: "Jack", Q: "Queen", K: "King" };
 
+// Lift the card off the felt while it turns over (a slow, suspenseful flip).
+const LIFT_Y = [0, -18, 0];
+const LIFT_SCALE = [1, 1.12, 1];
+
 /**
  * A dealt card. Pass the deal order as `i` so the stagger follows the deal.
  * `card = null` renders face-down; supplying the code later flips it over.
+ * `stagger` (seconds per card) and `fromShoe` slow the deal down and slide the
+ * card in from the shoe; `dramatic` makes a face-down card flip slowly.
  */
-export function PlayingCard({ card, i, className }: { card: Card | null; i: number; className?: string }) {
+export function PlayingCard({
+  card,
+  i,
+  className,
+  stagger,
+  fromShoe,
+  dramatic,
+}: {
+  card: Card | null;
+  i: number;
+  className?: string;
+  stagger?: number;
+  fromShoe?: boolean;
+  dramatic?: boolean;
+}) {
   const faceDown = card === null;
   // Fast mode halves the deal stagger.
   const { speed } = useSettings();
+  // Only a card dealt face-down gets the lifted reveal, not one dealt face-up.
+  const [dealtFaceDown] = useState(faceDown);
+  const slowReveal = dramatic && dealtFaceDown && !faceDown;
   const rank = card ? rankOf(card) : null;
   const suit = card ? suitOf(card) : null;
   const red = suit === "H" || suit === "D";
 
   return (
     <motion.div
-      custom={i * speed}
+      custom={{ i: i * speed, step: stagger, fromShoe }}
       variants={cardVariants}
       initial="hidden"
       animate="visible"
@@ -38,8 +62,8 @@ export function PlayingCard({ card, i, className }: { card: Card | null; i: numb
       <motion.div
         className="relative size-full [transform-style:preserve-3d]"
         initial={false}
-        animate={{ rotateY: faceDown ? 180 : 0 }}
-        transition={{ duration: 0.45, ease: expoOut }}
+        animate={slowReveal ? { rotateY: 0, y: LIFT_Y, scale: LIFT_SCALE } : { rotateY: faceDown ? 180 : 0 }}
+        transition={slowReveal ? { duration: 0.9 * speed, ease: "easeInOut" } : { duration: 0.45, ease: expoOut }}
       >
         {card && (
           <div

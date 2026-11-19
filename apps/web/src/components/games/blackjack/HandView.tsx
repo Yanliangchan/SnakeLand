@@ -47,11 +47,15 @@ export function ResultTag({ result, payout, bet }: { result: HandResult; payout:
   );
 }
 
+/** Seconds between cards on the deal: slower than other games, so each card lands. */
+export const DEAL_STAGGER = 0.3;
+
 /**
  * A row of overlapping cards. `baseSeq` is the first draw of the latest
  * update, so only newly dealt cards stagger in (and in deal order).
+ * `dramatic` turns a face-down card over slowly (the dealer's hole card).
  */
-export function CardRow({ cards, baseSeq }: { cards: DealtCardDTO[]; baseSeq: number }) {
+export function CardRow({ cards, baseSeq, dramatic }: { cards: DealtCardDTO[]; baseSeq: number; dramatic?: boolean }) {
   return (
     <div className="flex">
       <AnimatePresence>
@@ -60,6 +64,9 @@ export function CardRow({ cards, baseSeq }: { cards: DealtCardDTO[]; baseSeq: nu
             key={c.seq}
             card={c.code}
             i={Math.max(0, c.seq - baseSeq)}
+            stagger={DEAL_STAGGER}
+            fromShoe
+            dramatic={dramatic}
             className={idx > 0 ? "-ml-[clamp(30px,6.4cqh,56px)]" : undefined}
           />
         ))}

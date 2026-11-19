@@ -39,9 +39,14 @@ function Recent({ recent, streak }: { recent: RecentResult[]; streak: number }) 
   );
 }
 
+// A short shake when the dealer busts.
+const BUST_SHAKE = [0, -7, 7, -5, 5, -2, 0];
+
 export function Felt({
   round,
+  revealing,
   baseSeq,
+  dealerBaseSeq = baseSeq,
   shoe,
   recent,
   streak,
@@ -49,14 +54,19 @@ export function Felt({
   onFairness,
 }: {
   round: BlackjackRoundDTO | null;
+  /** The dealer is still playing out a settled hand: hold the results back. */
+  revealing: boolean;
   baseSeq: number;
+  /** Deal-order base for the dealer's row (its reveal cards arrive one by one, unstaggered). */
+  dealerBaseSeq?: number;
   shoe: ShoeDTO;
   recent: RecentResult[];
   streak: number;
   chips: SlipChip[];
   onFairness: () => void;
 }) {
-  const settled = round?.phase === "settled";
+  const settled = round?.phase === "settled" && !revealing;
+  const dealerBust = !!round && round.dealer.revealed && round.dealer.total > 21;
   const net = settled ? (round.totalPayout ?? 0) - round.totalBet : 0;
   const multiplier = settled && round.totalBet > 0 ? (round.totalPayout ?? 0) / round.totalBet : 0;
   const betAmount = round ? round.totalBet : chips.reduce((s, c) => s + c.value, 0);
@@ -79,11 +89,25 @@ export function Felt({
 
       {/* Dealer */}
       <div className="flex flex-1 flex-col items-center justify-center gap-2">
-        <span className="text-[12px] font-medium uppercase tracking-[0.08em] text-fg-disabled">Dealer</span>
+        <motion.span
+          animate={revealing ? { opacity: [0.45, 1, 0.45] } : { opacity: 1 }}
+          transition={revealing ? { duration: 1.4, repeat: Infinity, ease: "easeInOut" } : { duration: 0.2 }}
+          className={cn(
+            "text-[12px] font-medium uppercase tracking-[0.08em] transition-colors",
+            revealing ? "text-fg" : "text-fg-disabled",
+          )}
+        >
+          Dealer
+        </motion.span>
         {round && (
           <>
-            <CardRow cards={round.dealer.cards} baseSeq={baseSeq} />
-            <TotalPill total={round.dealer.total} soft={round.dealer.soft} status={round.dealer.total > 21 ? "bust" : undefined} />
+            <motion.div
+              animate={dealerBust && !revealing ? { x: BUST_SHAKE } : { x: 0 }}
+              transition={{ duration: 0.5, ease: "easeOut" }}
+            >
+              <CardRow cards={round.dealer.cards} baseSeq={dealerBaseSeq} dramatic />
+            </motion.div>
+            <TotalPill total={round.dealer.total} soft={round.dealer.soft} status={dealerBust ? "bust" : undefined} />
           </>
         )}
       </div>
@@ -91,7 +115,15 @@ export function Felt({
       {/* Centre line: rules, or the round result */}
       <div className="my-1 grid min-h-[48px] shrink-0 place-items-center">
         <AnimatePresence mode="wait">
-          {settled ? (
+          {revealing ? (
+            <motion.p
+              key="dealer-turn"
+              {...fade}
+              className="text-center text-[13px] font-semibold uppercase tracking-[0.18em] text-fg-muted"
+            >
+              Dealer&rsquo;s turn
+            </motion.p>
+          ) : settled ? (
             <motion.div key={`result-${round.id}`} {...fadeUp} className="flex flex-col items-center">
               <WinCelebration trigger={round.id} multiplier={multiplier}>
                 <span

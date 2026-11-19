@@ -13,16 +13,27 @@ export const tapTransition: Transition = { duration: 0.1, ease: "easeInOut" };
 /** 2. Balance counter spring. */
 export const balanceSpring = { stiffness: 120, damping: 20, mass: 0.5 } as const;
 
-/** 3. Card deal: staggered, expo-out. Use with custom={i}. */
+/**
+ * 3. Card deal: staggered, expo-out. Use with custom={i}, or with
+ * custom={{ i, step, fromShoe }} for a slower deal that slides in from the shoe.
+ */
 export const expoOut = [0.16, 1, 0.3, 1] as const;
+type CardDeal = number | { i: number; step?: number; fromShoe?: boolean };
+const dealOf = (c: CardDeal) => (typeof c === "number" ? { i: c } : c);
 export const cardVariants: Variants = {
-  hidden: { opacity: 0, scale: 0.9, y: 8 },
-  visible: (i: number) => ({
-    opacity: 1,
-    scale: 1,
-    y: 0,
-    transition: { duration: 0.32, ease: expoOut, delay: i * 0.07 },
-  }),
+  hidden: (c: CardDeal) =>
+    dealOf(c).fromShoe ? { opacity: 0, x: 160, y: -140, rotate: 18, scale: 0.8 } : { opacity: 0, scale: 0.9, y: 8 },
+  visible: (c: CardDeal) => {
+    const { i, step = 0.07, fromShoe } = dealOf(c);
+    return {
+      opacity: 1,
+      x: 0,
+      y: 0,
+      rotate: 0,
+      scale: 1,
+      transition: { duration: fromShoe ? 0.55 : 0.32, ease: expoOut, delay: i * step },
+    };
+  },
   exit: { opacity: 0, scale: 0.9 },
 };
 

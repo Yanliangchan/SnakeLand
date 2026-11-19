@@ -4,10 +4,13 @@ import { motion } from "framer-motion";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   BLACKJACK_RULES,
+  handValue,
+  type Card,
   type BlackjackAction,
   type BlackjackRoundDTO,
   type BlackjackTableDTO,
   type BlackjackUpdateDTO,
+  type RecentResult,
   type RevealedShoeDTO,
 } from "@snakeland/shared";
 import { GameShell } from "@/components/GameShell";
@@ -19,6 +22,7 @@ import { useSettings } from "@/providers/settings";
 import { BetControls, type Mode } from "./BetControls";
 import { FairnessPanel } from "./FairnessPanel";
 import { Felt } from "./Felt";
+import { DEAL_STAGGER } from "./HandView";
 import { useChipSlip } from "../shared/ChipSlip";
 import { useClientSeed } from "../shared/useClientSeed";
 
@@ -27,6 +31,35 @@ const maxSeq = (r: BlackjackRoundDTO | null) =>
 
 /** The stake a round was opened with (hands may since be doubled). */
 const baseBetOf = (r: BlackjackRoundDTO) => Math.min(...r.hands.map((h) => (h.doubled ? h.bet / 2 : h.bet)));
+
+/**
+ * The dealer's play, staged. The server has already settled the hand; this
+ * only replays it: step 0 shows the hole card face-down, step 1 turns it over,
+ * and each later step draws one more dealer card. Results stay hidden until the end.
+ */
+interface Reveal {
+  round: BlackjackRoundDTO;
+  step: number;
+  /** Seconds before the hole card turns (longer after a fresh deal, so the deal lands first). */
+  firstDelay: number;
+  /** Applied once the dealer is done, so nothing gives the result away early. */
+  done: { balance: number | null; recent: RecentResult[]; streak: number; record: boolean };
+}
+
+const lastRevealStep = (r: BlackjackRoundDTO) => r.dealer.cards.length - 1;
+
+function revealView(r: BlackjackRoundDTO, step: number): BlackjackRoundDTO {
+  const cards = r.dealer.cards
+    .slice(0, Math.max(2, step + 1))
+    .map((c, idx) => (idx === 1 && step === 0 ? { ...c, code: null } : c));
+  const { total, soft } = handValue(cards.flatMap((c): Card[] => (c.code ? [c.code] : [])));
+  return {
+    ...r,
+    dealer: { cards, total, soft, revealed: step > 0 },
+    hands: r.hands.map((h) => ({ ...h, result: null, payout: null })),
+    totalPayout: null,
+  };
+}
 
 function message(e: unknown): string {
   if (e instanceof ApiError) {
@@ -38,7 +71,7 @@ function message(e: unknown): string {
 
 export function BlackjackGame() {
   const { me, setWallet } = useSession();
-  const { play } = useSettings();
+  const { play, speed, reducedMotion } = useSettings();
 
   const [table, setTable] = useState<BlackjackTableDTO | null>(null);
   const [round, setRound] = useState<BlackjackRoundDTO | null>(null);
@@ -47,6 +80,7 @@ export function BlackjackGame() {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fairOpen, setFairOpen] = useState(false);
+  const [reveal, setReveal] = useState<Reveal | null>(null);
   const busy = useRef(false);
 
   const balance = me?.wallet.balance ?? 0;
@@ -90,19 +124,76 @@ export function BlackjackGame() {
   }, [setSlip]);
 
   function apply(u: BlackjackUpdateDTO, isNewRound: boolean) {
-    if (u.round.phase === "settled" && (isNewRound || round?.phase !== "settled")) {
-      recordRound("blackjack", u.round.totalBet, u.round.totalPayout ?? 0);
-    }
+    const justSettled = u.round.phase === "settled" && (isNewRound || round?.phase !== "settled");
+    // The dealer turns the hole card over in this update: play it out slowly.
+    const dealerTurn = u.round.dealer.revealed && (isNewRound || !round?.dealer.revealed) && !reducedMotion;
+    if (justSettled && !dealerTurn) recordRound("blackjack", u.round.totalBet, u.round.totalPayout ?? 0);
     setBaseSeq(isNewRound ? 0 : maxSeq(round) + 1);
     setRound(u.round);
-    setTable((t) => (t ? { ...t, shoe: u.shoe, recent: u.recent, streak: u.streak } : t));
-    if (u.balance !== null) setWallet({ balance: u.balance });
+    if (dealerTurn) {
+      // A fresh deal lands four cards first; after a stand, just a beat.
+      const firstDelay = isNewRound ? 3 * DEAL_STAGGER + 1.1 : 0.7;
+      setTable((t) => (t ? { ...t, shoe: u.shoe } : t));
+      setReveal({
+        round: u.round,
+        step: 0,
+        firstDelay,
+        done: { balance: u.balance, recent: u.recent, streak: u.streak, record: justSettled },
+      });
+    } else {
+      setTable((t) => (t ? { ...t, shoe: u.shoe, recent: u.recent, streak: u.streak } : t));
+      if (u.balance !== null) setWallet({ balance: u.balance });
+    }
     if (u.revealedShoe) setRevealed(u.revealedShoe);
     if (maxSeq(u.round) > (isNewRound ? -1 : maxSeq(round))) play("flip");
   }
 
+  const finishReveal = useCallback(
+    ({ round: r, done }: Reveal) => {
+      if (done.record) recordRound("blackjack", r.totalBet, r.totalPayout ?? 0);
+      if (done.balance !== null) setWallet({ balance: done.balance });
+    },
+    [setWallet],
+  );
+
+  // Step through the dealer's reveal, one beat at a time.
+  useEffect(() => {
+    if (!reveal) return;
+    const last = lastRevealStep(reveal.round);
+    const total = revealView(reveal.round, reveal.step).dealer.total;
+    // Linger a little longer when the dealer is on a total that could go either way.
+    const tense = reveal.step > 0 && total >= 12 && total <= 16;
+    const wait = reveal.step === 0 ? reveal.firstDelay : reveal.step >= last ? 0.8 : 1.05 + (tense ? 0.35 : 0);
+    const timer = setTimeout(() => {
+      if (reveal.step >= last) {
+        setReveal(null);
+        setTable((t) => (t ? { ...t, recent: reveal.done.recent, streak: reveal.done.streak } : t));
+        finishReveal(reveal);
+      } else {
+        play("flip");
+        setReveal({ ...reveal, step: reveal.step + 1 });
+      }
+    }, wait * speed * 1000);
+    return () => clearTimeout(timer);
+  }, [reveal, speed, play, finishReveal]);
+
+  // Leaving mid-reveal still lands the balance and the session stats.
+  const pendingReveal = useRef<Reveal | null>(null);
+  useEffect(() => {
+    pendingReveal.current = reveal;
+  }, [reveal]);
+  useEffect(
+    () => () => {
+      if (pendingReveal.current) finishReveal(pendingReveal.current);
+    },
+    [finishReveal],
+  );
+
+  const revealing = reveal !== null;
+  const shownRound = reveal ? revealView(reveal.round, reveal.step) : round;
+
   async function run(fn: () => Promise<void>) {
-    if (busy.current) return;
+    if (busy.current || revealing) return;
     busy.current = true;
     setPending(true);
     setError(null);
@@ -182,9 +273,9 @@ export function BlackjackGame() {
         controls={
           <BetControls
             mode={mode}
-            round={round}
+            round={shownRound}
             slip={slip}
-            pending={pending}
+            pending={pending || revealing}
             error={error}
             onDeal={deal}
             onAction={act}
@@ -197,8 +288,10 @@ export function BlackjackGame() {
       >
         {table ? (
           <Felt
-            round={round}
+            round={shownRound}
+            revealing={revealing}
             baseSeq={baseSeq}
+            dealerBaseSeq={reveal && reveal.step > 0 ? Number.MAX_SAFE_INTEGER : baseSeq}
             shoe={table.shoe}
             recent={table.recent}
             streak={table.streak}
