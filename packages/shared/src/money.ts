@@ -36,6 +36,9 @@ export const TRANSACTION_TYPES = [
   "event_refund",
   "cashback",
   "rescue",
+  /** Chips moved from the wallet to a poker table, and back when the player leaves. */
+  "table_buyin",
+  "table_cashout",
 ] as const;
 export type TransactionType = (typeof TRANSACTION_TYPES)[number];
 

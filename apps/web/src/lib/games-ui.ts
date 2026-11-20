@@ -13,6 +13,7 @@ export const GAME_ACCENT: Record<GameId, string> = {
   crossing: "#facc15",
   penalty: "#4ade80",
   hilo: "#f472b6",
+  poker: "#22d3ee",
 };
 
 export interface GameHelp {
@@ -135,6 +136,19 @@ export const GAME_HELP: Record<GameId, GameHelp> = {
       ["Enter", "Bet / cash out"],
       ["1–5", "Shoot at a spot"],
       ["R", "Random spot"],
+    ],
+  },
+  poker: {
+    steps: [
+      "Pick a table and buy in. Bots fill the empty seats; you take a bot's seat when you sit.",
+      "No-limit hold'em: two cards each, five on the board. Best five-card hand wins.",
+      "Fold, check, call or raise when the ring is on you. Stand up any time: your stack goes back to your wallet.",
+    ],
+    shortcuts: [
+      ["F", "Fold"],
+      ["C", "Check / call"],
+      ["R", "Bet / raise"],
+      ["A", "All in"],
     ],
   },
   hilo: {

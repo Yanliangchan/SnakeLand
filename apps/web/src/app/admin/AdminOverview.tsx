@@ -155,7 +155,8 @@ function NetList({ title, rows, tone }: { title: string; rows: AdminOverviewDTO[
   );
 }
 
-const roomName = (room: string) => (room === "crash" ? "Crash" : room.startsWith("roulette:") ? `Roulette ${room.slice(-1)}` : room);
+const roomName = (room: string) =>
+  room === "crash" ? "Crash" : room.startsWith("roulette:") ? `Roulette ${room.slice(-1)}` : room.startsWith("poker:") ? `Poker ${room.slice(6)}` : room;
 
 export function AdminOverview() {
   const expired = useAdminExpired();

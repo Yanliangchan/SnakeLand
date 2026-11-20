@@ -106,6 +106,14 @@ export function GameGlyph({ game, size = 28 }: { game: GameId; size?: number }) 
           <circle cx="14" cy="22.5" r="2.5" fill="currentColor" stroke="none" />
         </svg>
       );
+    case "poker":
+      return (
+        <svg {...common}>
+          <rect fill="currentColor" fillOpacity={0.18} x="4" y="8" width="11" height="16" rx="2" transform="rotate(-10 9.5 16)" />
+          <rect x="13" y="6" width="11" height="16" rx="2" transform="rotate(8 18.5 14)" />
+          <path d="M18.5 10.5c-1.6 1.6-3 2.7-3 4 0 1 .8 1.7 1.7 1.7.6 0 1-.3 1.3-.7.3.4.7.7 1.3.7.9 0 1.7-.7 1.7-1.7 0-1.3-1.4-2.4-3-4z" fill="currentColor" stroke="none" transform="rotate(8 18.5 14)" />
+        </svg>
+      );
     case "hilo":
       return (
         <svg {...common}>

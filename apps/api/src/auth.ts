@@ -33,12 +33,15 @@ export function createAuth({
   env,
   wallet,
   purgeGuest,
+  onGuestLinked,
 }: {
   db: Db;
   env: Env;
   wallet: WalletService;
   /** Deletes the guest once its chips have moved to the new account. */
   purgeGuest?: (guestUserId: string) => Promise<unknown>;
+  /** Moves anything live (a poker seat) from the guest to the new account, before the guest is deleted. */
+  onGuestLinked?: (guestUserId: string, newUserId: string, name: string) => Promise<unknown>;
 }) {
   const isProd = env.NODE_ENV === "production";
 
@@ -151,6 +154,11 @@ export function createAuth({
         // We delete the guest ourselves (with all its game rows) after the merge.
         disableDeleteAnonymousUser: true,
         onLinkAccount: async ({ anonymousUser, newUser, ctx }) => {
+          try {
+            await onGuestLinked?.(anonymousUser.user.id, newUser.user.id, newUser.user.name);
+          } catch (error) {
+            ctx.context.logger.error("guest seat transfer failed", { guest: anonymousUser.user.id, error });
+          }
           try {
             const { merged } = await wallet.mergeGuestWallet(anonymousUser.user.id, newUser.user.id);
             if (merged && purgeGuest) await purgeGuest(anonymousUser.user.id);

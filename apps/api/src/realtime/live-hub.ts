@@ -76,7 +76,7 @@ export class LiveHub {
     if (c.socket.readyState !== c.socket.OPEN) return;
     const type = message && typeof message === "object" ? (message as { type?: string }).type : undefined;
     // State snapshots carry the server clock so countdowns match server deadlines.
-    const withClock = type === "state" || type === "crash-state" ? { ...(message as object), serverNow: new Date().toISOString() } : message;
+    const withClock = type === "state" || type === "crash-state" || type === "poker-state" ? { ...(message as object), serverNow: new Date().toISOString() } : message;
     c.socket.send(JSON.stringify(withClock));
   }
 

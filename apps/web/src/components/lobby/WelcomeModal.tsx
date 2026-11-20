@@ -8,7 +8,7 @@ const KEY = "snk:welcomed";
 
 const STEPS = [
   { icon: "🪙", title: "1,000 free chips, daily", body: "Virtual chips only — no real money, ever. Claim 1,000 more every day, and top the leaderboards for bonus claims." },
-  { icon: "🎲", title: "Eleven games, all provably fair", body: "Blackjack, Mines, Crash, Roulette and more. Every result is verifiable — tap “Fair” in any game to check it." },
+  { icon: "🎲", title: "Twelve games, all provably fair", body: "Blackjack, Poker, Mines, Crash, Roulette and more. Every result is verifiable — tap “Fair” in any game to check it." },
   { icon: ">_", title: "The Lab pays you to hack", body: "Capture-the-flag puzzles — crypto, web, forensics — that pay chips. Start easy, work up to Insane." },
 ];
 

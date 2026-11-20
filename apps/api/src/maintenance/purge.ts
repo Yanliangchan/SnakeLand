@@ -59,6 +59,8 @@ export class PurgeService {
       sql`DELETE FROM event_entries WHERE user_id = ${userId}`,
       sql`DELETE FROM roulette_bets WHERE user_id = ${userId}`,
       sql`DELETE FROM crash_bets WHERE user_id = ${userId}`,
+      // A seat still at a table is dropped by the dealer once its session is gone.
+      sql`DELETE FROM poker_sessions WHERE user_id = ${userId}`,
       sql`DELETE FROM blackjack_rounds WHERE user_id = ${userId}`,
       sql`DELETE FROM blackjack_shoes WHERE user_id = ${userId}`,
       sql`DELETE FROM blackjack_tables WHERE user_id = ${userId}`,
@@ -107,6 +109,8 @@ export class PurgeService {
         AND u.created_at < ${cutoff}
         AND NOT EXISTS (SELECT 1 FROM sessions s WHERE s.user_id = u.id AND s.updated_at >= ${cutoff})
         AND NOT EXISTS (SELECT 1 FROM transactions t WHERE t.user_id = u.id AND t.created_at >= ${cutoff})
+        -- Sitting at a poker table makes no wallet activity until they stand up.
+        AND NOT EXISTS (SELECT 1 FROM poker_sessions p WHERE p.user_id = u.id AND p.closed_at IS NULL)
       LIMIT 500`);
     let n = 0;
     for (const { id } of stale.rows) if (await this.purgeGuest(id)) n++;
@@ -141,6 +145,8 @@ export class PurgeService {
     await b("crash_bets", () => sql`DELETE FROM crash_bets WHERE id IN (
       SELECT b.id FROM crash_bets b JOIN crash_rounds r ON r.id = b.round_id
       WHERE r.phase = 'crashed' AND r.crashed_at < ${cutoff} LIMIT ${BATCH})`);
+    await b("poker_hands", () => sql`DELETE FROM poker_hands WHERE id IN (
+      SELECT id FROM poker_hands WHERE created_at < ${cutoff} LIMIT ${BATCH})`);
     await b("crash_rounds", () => sql`DELETE FROM crash_rounds WHERE id IN (
       SELECT r.id FROM crash_rounds r WHERE r.phase = 'crashed' AND r.crashed_at < ${cutoff}
       AND NOT EXISTS (SELECT 1 FROM crash_bets b WHERE b.round_id = r.id) LIMIT ${BATCH})`);

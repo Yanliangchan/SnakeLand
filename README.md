@@ -1,11 +1,11 @@
 # snakeland
 
 A casino-style web app with **virtual chips only**. There's no real money anywhere, and every outcome is provably fair.
-It has eleven games in one lobby: Blackjack, Mines, Plinko, Baccarat, Roulette, Crash, Carrier, Tower, Crossing,
-Penalty and Hi-Lo, plus **The Lab**, ~20 capture-the-flag puzzles (with tiered hints and a live SQL-injection
+It has twelve games in one lobby: Blackjack, Poker, Mines, Plinko, Baccarat, Roulette, Crash, Carrier, Tower,
+Crossing, Penalty and Hi-Lo, plus **The Lab**, ~20 capture-the-flag puzzles (with tiered hints and a live SQL-injection
 sandbox) that pay chips.
 
-> Status: live at snakeland.yanliangchan.com. All eleven games, The Lab, live chat, push notifications,
+> Status: live at snakeland.yanliangchan.com. All twelve games, The Lab, live chat, push notifications,
 > leaderboards and the admin console are running.
 
 ## Stack
@@ -159,6 +159,29 @@ Mines has a **3% house edge** and Plinko **1%**. Bets are 10–10,000, and multi
   has an idempotency key.
 - **The snake**: the graph is a snake slithering up the curve on a single canvas; cash-outs show as flags on its
   body, and at the crash it bites (turns red and shakes). It only animates while something is moving.
+
+## Poker (live, multiplayer)
+
+- **Game**: No-Limit Texas Hold'em, six seats, at three tables: 10/20, 100/200 and 1,000/2,000. Buy in for
+  20–100 big blinds from your wallet; standing up (any time) returns your stack. One seat per player at a time.
+- **Bots**: empty seats are filled with house bots, each with a style (loose, tight or aggressive). Preflop they
+  use the Chen formula; after the flop they estimate equity by simulating run-outs against the players still in
+  and compare it with the pot odds. Bots sit with 100 big blinds and are topped up below 30. A player who sits
+  down takes a bot's seat (immediately if the bot isn't in a hand, otherwise after the hand).
+- **Money**: the buy-in is a `table_buyin` ledger row and the stand-up a `table_cashout`. Neither counts as play,
+  so chips at the table can't be claimed as cashback and don't move leaderboards. What bots win or lose is the
+  house's result, recorded per hand (`poker_hands.house_net`).
+- **Rake**: 2.5%, capped at 3 big blinds, only on a pot that at least two real players put chips into, that a
+  real player wins, and only once the flop is dealt. Pots against bots alone are never raked.
+- **Fairness**: each hand's deck is shuffled from a fresh server seed (its hash shown before the deal) with the
+  hand id as the client seed; the seed is revealed when the hand ends and the Fair panel verifies it.
+- **Integrity**: the table is one row (`poker_tables.state`) changed only under its row lock, in the same
+  transaction as any wallet change it implies. Hole cards are never in the public state: each player gets their
+  own over the live socket. A player has 20s per decision; when it runs out they check or fold, and two misses in
+  a row stand them up (cashing them out). A guest who signs up keeps their seat; a deleted guest's seat is
+  dropped.
+- **Clock**: one instance (Redis lease) drives bot moves, timeouts, streets and new hands. A table runs while a
+  player is seated or someone is watching, and sleeps otherwise.
 
 ## Carrier, Tower, Crossing, Penalty and Hi-Lo
 

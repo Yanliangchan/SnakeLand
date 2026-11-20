@@ -127,6 +127,13 @@
       "when": 1790565369488,
       "tag": "0017_cashback_rescue",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1795150821450,
+      "tag": "0018_poker",
+      "breakpoints": true
     }
   ]
 }

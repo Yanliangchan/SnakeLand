@@ -174,7 +174,8 @@ export const transactions = pgTable(
       "transactions_amount_sign",
       sql`(${t.type} = 'bet' AND ${t.amount} < 0)
         OR (${t.type}::text IN ('payout', 'refund', 'daily_claim', 'signup_bonus', 'lab_reward', 'bonus_spin', 'referral', 'rain', 'lab_track', 'event_prize', 'event_refund', 'cashback', 'rescue') AND ${t.amount} > 0)
-        OR (${t.type}::text = 'event_entry' AND ${t.amount} < 0)
+        OR (${t.type}::text IN ('event_entry', 'table_buyin') AND ${t.amount} < 0)
+        OR (${t.type}::text = 'table_cashout' AND ${t.amount} > 0)
         OR (${t.type}::text IN ('guest_merge', 'admin_adjust', 'tip') AND ${t.amount} <> 0)`,
     ),
     check(
@@ -401,6 +402,64 @@ export const rouletteBets = pgTable(
     index("roulette_bets_user_idx").on(t.userId, t.createdAt.desc()),
     check("roulette_bets_amount_positive", sql`${t.amount} > 0`),
   ],
+);
+
+// ---------------------------------------------------------------------------
+// Poker (shared six-seat tables; empty seats are house bots)
+// ---------------------------------------------------------------------------
+
+/**
+ * One row per table ("low", "mid", "high"). The whole table, including the
+ * current hand's deck and seed, is JSON on this row and only changes under
+ * its row lock. Never sent to clients as-is.
+ */
+export const pokerTables = pgTable("poker_tables", {
+  id: text("id").primaryKey(),
+  state: jsonb("state").notNull(),
+  version: integer("version").notNull().default(0),
+  updatedAt: updatedAt(),
+});
+
+/** A player's time at a table: the buy-in that left their wallet and what came back. */
+export const pokerSessions = pgTable(
+  "poker_sessions",
+  {
+    id: uuid("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    tableId: text("table_id").notNull(),
+    buyIn: bigint("buy_in", { mode: "number" }).notNull(),
+    cashOut: bigint("cash_out", { mode: "number" }),
+    openedAt: timestamp("opened_at", { withTimezone: true, precision: 3 }).notNull().defaultNow(),
+    closedAt: timestamp("closed_at", { withTimezone: true, precision: 3 }),
+  },
+  (t) => [
+    // One seat at a time per player, across all tables.
+    uniqueIndex("poker_sessions_one_open_uq").on(t.userId).where(sql`${t.closedAt} IS NULL`),
+    index("poker_sessions_user_idx").on(t.userId, t.openedAt.desc()),
+    check("poker_sessions_buy_in_positive", sql`${t.buyIn} > 0`),
+  ],
+);
+
+/** Finished hands: the revealed seed (to verify the deck), the result, the rake and what the house's bots won or lost. */
+export const pokerHands = pgTable(
+  "poker_hands",
+  {
+    id: uuid("id").primaryKey(),
+    tableId: text("table_id").notNull(),
+    number: integer("number").notNull(),
+    serverSeed: text("server_seed").notNull(),
+    serverSeedHash: text("server_seed_hash").notNull(),
+    board: jsonb("board").$type<string[]>().notNull(),
+    result: jsonb("result").notNull(),
+    rake: bigint("rake", { mode: "number" }).notNull().default(0),
+    /** Chips the bots won (positive) or lost (negative) this hand. */
+    houseNet: bigint("house_net", { mode: "number" }).notNull().default(0),
+    humans: integer("humans").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true, precision: 3 }).notNull().defaultNow(),
+  },
+  (t) => [index("poker_hands_created_idx").on(t.createdAt), index("poker_hands_table_idx").on(t.tableId, t.number.desc())],
 );
 
 // ---------------------------------------------------------------------------
@@ -854,4 +913,7 @@ export const schema = {
   events,
   eventEntries,
   eventCrashRounds,
+  pokerTables,
+  pokerSessions,
+  pokerHands,
 };

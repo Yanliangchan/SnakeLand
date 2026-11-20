@@ -5,7 +5,7 @@ import rateLimit from "@fastify/rate-limit";
 import websocket from "@fastify/websocket";
 import { hasZodFastifySchemaValidationErrors, serializerCompiler, validatorCompiler } from "fastify-type-provider-zod";
 import { sql } from "drizzle-orm";
-import { CRASH_ROOM, ROULETTE_WHEELS, rouletteRoom } from "@snakeland/shared";
+import { CRASH_ROOM, POKER_TABLES, ROULETTE_WHEELS, pokerRoom, rouletteRoom } from "@snakeland/shared";
 import type { Redis } from "ioredis";
 import { createAuth } from "./auth";
 import type { Db } from "./db/client";
@@ -20,6 +20,8 @@ import { CarrierService } from "./games/arcade/carrier";
 import { LadderService } from "./games/arcade/ladder";
 import { CrashDealer } from "./games/crash/dealer";
 import { CrashService } from "./games/crash/service";
+import { PokerDealer } from "./games/poker/dealer";
+import { PokerService } from "./games/poker/service";
 import { RouletteDealer } from "./games/roulette/dealer";
 import { RouletteService } from "./games/roulette/service";
 import { authBridge } from "./http/auth-bridge";
@@ -29,6 +31,7 @@ import { instantRoutes } from "./http/routes/instant";
 import { arcadeRoutes } from "./http/routes/arcade";
 import { crashRoutes } from "./http/routes/crash";
 import { liveRoutes } from "./http/routes/live";
+import { pokerRoutes } from "./http/routes/poker";
 import { rouletteRoutes } from "./http/routes/roulette";
 import { adminRoutes } from "./http/routes/admin";
 import { progressRoutes } from "./http/routes/progress";
@@ -114,7 +117,15 @@ export async function buildApp({ env, db, redis }: { env: Env; db: Db; redis: Re
 
   const wallet = new WalletService(db);
   const purge = new PurgeService(db);
-  const auth = createAuth({ db, env, wallet, purgeGuest: (id) => purge.purgeGuest(id) });
+  // Poker is built after auth (it needs the live bus); a guest's seat moves over when they sign up.
+  let pokerRef: PokerService | null = null;
+  const auth = createAuth({
+    db,
+    env,
+    wallet,
+    purgeGuest: (id) => purge.purgeGuest(id),
+    onGuestLinked: (guest, user, name) => pokerRef?.transferSeat(guest, user, name) ?? Promise.resolve(),
+  });
   const events = new EventService(db, wallet);
   const blackjack = new BlackjackService(db, wallet, events);
   const seeds = new FairSeedService(db);
@@ -133,8 +144,13 @@ export async function buildApp({ env, db, redis }: { env: Env; db: Db; redis: Re
   const dealer = new RouletteDealer(db, wallet, roulette, bus, lease("snk:roulette:leader"), presence, app.log);
   const crash = new CrashService(db, wallet, bus);
   const crashDealer = new CrashDealer(db, wallet, crash, bus, lease("snk:crash:leader"), presence, app.log);
+  const poker = new PokerService(db, wallet, bus);
+  pokerRef = poker;
+  const pokerDealer = new PokerDealer(poker, bus, lease("snk:poker:leader"), presence, app.log);
   const hub = new LiveHub(bus, presence, async (room, userId) => {
     if (room === CRASH_ROOM) return { type: "crash-state", state: await crash.state(userId) };
+    const pokerTableCfg = POKER_TABLES.find((t) => pokerRoom(t.id) === room);
+    if (pokerTableCfg) return { type: "poker-state", ...(await poker.view(pokerTableCfg.id, userId)) };
     const wheel = ROULETTE_WHEELS.find((w) => rouletteRoom(w.id) === room)!;
     return { type: "state", wheel: await roulette.wheelState(wheel.id) };
   });
@@ -170,6 +186,7 @@ export async function buildApp({ env, db, redis }: { env: Env; db: Db; redis: Re
     await maintenance.stop();
     await dealer.stop();
     await crashDealer.stop();
+    await pokerDealer.stop();
     await hub.close();
     await bus.close();
   });
@@ -262,6 +279,7 @@ export async function buildApp({ env, db, redis }: { env: Env; db: Db; redis: Re
   await app.register(liveRoutes, { auth, hub, tickets, webOrigins: env.WEB_ORIGINS, chat, engagement });
   await app.register(rouletteRoutes, { auth, roulette });
   await app.register(crashRoutes, { auth, crash });
+  await app.register(pokerRoutes, { auth, poker });
   await app.register(arcadeRoutes, { auth, carrier, ladder, events });
   await app.register(progressRoutes, { auth, progress, purge });
   await app.register(pushRoutes, { auth, push });
@@ -281,5 +299,5 @@ export async function buildApp({ env, db, redis }: { env: Env; db: Db; redis: Re
     purge,
   });
 
-  return { app, auth, wallet, blackjack, mines, plinko, baccarat, roulette, dealer, carrier, ladder, crash, crashDealer, progress, purge, maintenance, admin, presence, lab, chat, push, engagement, events };
+  return { app, auth, wallet, blackjack, mines, plinko, baccarat, roulette, dealer, carrier, ladder, crash, crashDealer, poker, pokerDealer, progress, purge, maintenance, admin, presence, lab, chat, push, engagement, events };
 }

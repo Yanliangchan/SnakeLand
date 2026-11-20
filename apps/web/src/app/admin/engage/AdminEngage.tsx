@@ -13,7 +13,11 @@ import { useAdminExpired } from "../AdminFrame";
 const input = "h-10 w-full rounded-[var(--radius-ui)] bg-bg px-3 text-[14px] outline-none hairline focus:border-fg/40";
 
 const roomName = (r: LiveRoom) =>
-  r === CRASH_ROOM ? "Crash" : `Roulette · ${ROULETTE_WHEELS.find((w) => `roulette:${w.id}` === r)?.name ?? r}`;
+  r === CRASH_ROOM
+    ? "Crash"
+    : r.startsWith("poker:")
+      ? `Poker · ${r.slice(6)} stakes`
+      : `Roulette · ${ROULETTE_WHEELS.find((w) => `roulette:${w.id}` === r)?.name ?? r}`;
 
 const LEVEL_TONE: Record<AnnouncementLevel, string> = {
   info: "text-fg",
@@ -23,7 +27,7 @@ const LEVEL_TONE: Record<AnnouncementLevel, string> = {
 
 function Rain() {
   const expired = useAdminExpired();
-  const [room, setRoom] = useState<LiveRoom>(LIVE_ROOMS[0]);
+  const [room, setRoom] = useState<LiveRoom>(LIVE_ROOMS[0]!);
   const [amount, setAmount] = useState("5000");
   const [pending, setPending] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);

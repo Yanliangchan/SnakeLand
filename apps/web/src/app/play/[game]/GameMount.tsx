@@ -41,6 +41,9 @@ const GAMES = {
   hilo: dynamic(() => import("@/components/games/ladder/HiloGame").then((m) => m.HiloGame), {
     loading: () => <GameLoading game="hilo" />,
   }),
+  poker: dynamic(() => import("@/components/games/poker/PokerGame").then((m) => m.PokerGame), {
+    loading: () => <GameLoading game="poker" />,
+  }),
 } satisfies Record<GameId, React.ComponentType>;
 
 export function GameMount({ game, eventId }: { game: GameId; eventId: string | null }) {

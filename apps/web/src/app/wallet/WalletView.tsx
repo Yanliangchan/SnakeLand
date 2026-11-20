@@ -30,6 +30,8 @@ const LABEL: Record<TransactionType, string> = {
   event_refund: "Event refund",
   cashback: "Cashback",
   rescue: "Free top-up",
+  table_buyin: "Poker buy-in",
+  table_cashout: "Poker cash-out",
 };
 
 const timeFmt = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });

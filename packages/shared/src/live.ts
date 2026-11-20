@@ -1,3 +1,4 @@
+import { POKER_TABLES, pokerRoom } from "./poker";
 import { ROULETTE_WHEELS, type WheelId } from "./roulette";
 
 /**
@@ -6,7 +7,11 @@ import { ROULETTE_WHEELS, type WheelId } from "./roulette";
  */
 export const rouletteRoom = (wheelId: WheelId) => `roulette:${wheelId}` as const;
 export const CRASH_ROOM = "crash" as const;
-export const LIVE_ROOMS = [...ROULETTE_WHEELS.map((w) => rouletteRoom(w.id)), CRASH_ROOM] as const;
+export const LIVE_ROOMS = [
+  ...ROULETTE_WHEELS.map((w) => rouletteRoom(w.id)),
+  CRASH_ROOM,
+  ...POKER_TABLES.map((t) => pokerRoom(t.id)),
+] as const;
 export type LiveRoom = (typeof LIVE_ROOMS)[number];
 export const isLiveRoom = (v: unknown): v is LiveRoom => typeof v === "string" && (LIVE_ROOMS as readonly string[]).includes(v);
 

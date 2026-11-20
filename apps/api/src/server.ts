@@ -6,7 +6,7 @@ import { createRedis } from "./redis";
 const env = loadEnv();
 const { db, pool } = createDb(env.DATABASE_URL);
 const redis = createRedis(env.REDIS_URL);
-const { app, dealer, crashDealer, maintenance } = await buildApp({ env, db, redis });
+const { app, dealer, crashDealer, pokerDealer, maintenance } = await buildApp({ env, db, redis });
 
 let closing = false;
 async function shutdown(signal: string) {
@@ -36,5 +36,6 @@ try {
 // Only the instance holding each Redis lease actually advances rounds.
 dealer.start();
 crashDealer.start();
+pokerDealer.start();
 // Housekeeping (top-5 snapshot, purges) also runs on a single lease holder.
 maintenance.start();
